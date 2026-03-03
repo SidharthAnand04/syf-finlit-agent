@@ -1,0 +1,2 @@
+# This directory holds the auto-generated TF-IDF index cache (index.pkl).
+# The cache file is git-ignored and will be created on first backend startup.
