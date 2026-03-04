@@ -72,22 +72,59 @@ export default function ChatPage() {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }
 
+  const SUGGESTIONS = [
+    "What is the 50/30/20 rule?",
+    "How does credit utilization affect my score?",
+    "How much should I keep in an emergency fund?",
+    "What's the difference between Avalanche and Snowball payoff?",
+  ];
+
+  function handleSuggestion(text: string) {
+    setInput(text);
+    textareaRef.current?.focus();
+  }
+
   return (
     <div className="page">
-      <header className="header">SYF Financial Literacy Assistant</header>
+      {/* ── Header ── */}
+      <header className="header">
+        <div className="header-logo">
+          <div className="header-logo-mark">SYF</div>
+          <div className="header-title">
+            <span className="header-brand">Synchrony</span>
+            <span className="header-sub">Financial Literacy Assistant</span>
+          </div>
+        </div>
+        <span className="header-badge">Beta</span>
+      </header>
 
+      {/* ── Transcript ── */}
       <div className="transcript">
         {messages.length === 0 && (
-          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", marginTop: "40px" }}>
-            Ask a financial literacy question to get started.
-          </p>
+          <div className="empty-state">
+            <div className="empty-icon">💬</div>
+            <div className="empty-heading">How can I help you today?</div>
+            <p className="empty-sub">
+              Ask me anything about budgeting, credit scores, savings, or debt management.
+            </p>
+            <div className="suggestions">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="suggestion-chip" onClick={() => handleSuggestion(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {messages.map((msg) => {
           if (msg.role === "error") {
             return (
               <div key={msg.id} className="message-row assistant">
-                <div className="label">Error</div>
+                <div className="message-meta">
+                  <div className="avatar assistant-avatar">SYF</div>
+                  <span className="label">Error</span>
+                </div>
                 <div className="error-bubble">{msg.text}</div>
               </div>
             );
@@ -96,7 +133,7 @@ export default function ChatPage() {
           if (msg.role === "user") {
             return (
               <div key={msg.id} className="message-row user">
-                <div className="label">You</div>
+                <span className="label">You</span>
                 <div className="bubble">{msg.text}</div>
               </div>
             );
@@ -105,17 +142,18 @@ export default function ChatPage() {
           // assistant
           return (
             <div key={msg.id} className="message-row assistant">
-              <div className="label">Assistant</div>
+              <div className="message-meta">
+                <div className="avatar assistant-avatar">SYF</div>
+                <span className="label">Synchrony Assistant</span>
+              </div>
               <div className="bubble">{msg.text}</div>
               {msg.citations && msg.citations.length > 0 && (
                 <div className="citations">
                   <div className="citations-title">Sources</div>
                   {msg.citations.map((c) => (
                     <div key={`${c.source}-${c.chunk_id}`} className="citation">
-                      <div className="citation-source">
-                        {c.source} · chunk {c.chunk_id}
-                      </div>
-                      <div className="citation-snippet">"{c.snippet}"</div>
+                      <div className="citation-source">{c.source}</div>
+                      <div className="citation-snippet">{c.snippet}</div>
                     </div>
                   ))}
                 </div>
@@ -126,7 +164,10 @@ export default function ChatPage() {
 
         {loading && (
           <div className="message-row assistant">
-            <div className="label">Assistant</div>
+            <div className="message-meta">
+              <div className="avatar assistant-avatar">SYF</div>
+              <span className="label">Synchrony Assistant</span>
+            </div>
             <div className="thinking">
               <span />
               <span />
@@ -138,11 +179,12 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
+      {/* ── Input ── */}
       <div className="input-bar">
         <textarea
           ref={textareaRef}
           rows={1}
-          placeholder="Ask about budgeting, credit, savings…  (Enter to send, Shift+Enter for new line)"
+          placeholder="Ask about budgeting, credit, savings… (Enter to send)"
           value={input}
           onChange={handleTextareaChange}
           onKeyDown={handleKeyDown}
@@ -151,6 +193,11 @@ export default function ChatPage() {
         <button onClick={handleSend} disabled={loading || !input.trim()}>
           Send
         </button>
+      </div>
+
+      {/* ── Disclaimer ── */}
+      <div className="footer-note">
+        For general financial education only. Not financial advice. Do not share personal account information.
       </div>
     </div>
   );

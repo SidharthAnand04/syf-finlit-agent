@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SYF FinLit Chatbot",
-  description: "Financial literacy assistant powered by Anthropic",
+  title: "Synchrony Financial Literacy Assistant",
+  description: "Ask questions about budgeting, credit, savings, and more — powered by Synchrony.",
 };
 
 export default function RootLayout({
