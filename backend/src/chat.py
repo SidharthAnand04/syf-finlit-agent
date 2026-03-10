@@ -70,17 +70,32 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
     if retrieved_chunks:
         context_parts = []
         for chunk in retrieved_chunks:
-            header = f"[Source: {chunk['source']} | Chunk {chunk['chunk_id']}]"
+            # Build a rich source attribution line for the LLM
+            title = chunk.get("display_title") or chunk.get("source", "unknown")
+            url = chunk.get("display_url")
+            heading = chunk.get("section_heading")
+            page = chunk.get("page_number")
+
+            source_ref = title
+            if url:
+                source_ref += f" ({url})"
+            if heading:
+                source_ref += f" § {heading}"
+            if page:
+                source_ref += f" (p.{page})"
+
+            header = f"[Source: {source_ref}]"
             context_parts.append(f"{header}\n{chunk['text']}")
+
         context_block = "\n\n---\n\n".join(context_parts)
-        # Truncate to avoid token bloat
         context_block = context_block[:MAX_CONTEXT_CHARS]
         prompt = (
             f"Context:\n{context_block}\n\n"
             f"---\n\n"
             f"Question: {user_message}\n\n"
             f"Answer in plain text only (no markdown). Stay under 150 words. "
-            f"Reference the source filename inline if you use context."
+            f"When you use context, cite the source by its title naturally inline "
+            f"(e.g., 'According to Synchrony Credit Cards...')."
         )
     else:
         prompt = (
@@ -112,16 +127,59 @@ def call_anthropic(prompt: str) -> str:
 
 
 # ──────────────────────────────────────────────
+# Follow-up question generation
+# ──────────────────────────────────────────────
+
+def generate_followups(
+    user_message: str,
+    answer: str,
+    retrieved_chunks: list[dict],
+) -> list[str]:
+    """Generate 3 relevant follow-up question suggestions via the LLM."""
+    sources = ", ".join({c["source"] for c in retrieved_chunks}) if retrieved_chunks else ""
+    context_note = f"The response referenced Synchrony knowledge sources: {sources}.\n\n" if sources else ""
+
+    prompt = (
+        f"A user asked a Synchrony Financial assistant: \"{user_message}\"\n\n"
+        f"The assistant replied: \"{answer}\"\n\n"
+        f"{context_note}"
+        f"Suggest exactly 3 concise follow-up questions the user might naturally ask next. "
+        f"Each question should relate to the user's original question, the assistant's answer, "
+        f"or Synchrony Financial products, credit cards, or personal finance topics. "
+        f"Return only the 3 questions, one per line, with no numbering, bullets, or extra text."
+    )
+
+    client = _get_client()
+    message = client.messages.create(
+        model=_get_model(),
+        max_tokens=150,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    lines = [ln.strip().lstrip("•-– ").strip() for ln in message.content[0].text.splitlines() if ln.strip()]
+    return lines[:3]
+
+
+# ──────────────────────────────────────────────
 # Citations
 # ──────────────────────────────────────────────
 
 def format_citations(retrieved_chunks: list[dict]) -> list[dict]:
     """Convert retrieval results into citation objects for the API response."""
-    return [
-        {
-            "source": chunk["source"],
-            "chunk_id": chunk["chunk_id"],
-            "snippet": chunk.get("snippet", chunk["text"][:160].replace("\n", " ")),
-        }
-        for chunk in retrieved_chunks
-    ]
+    citations = []
+    for chunk in retrieved_chunks:
+        display_title = chunk.get("display_title") or chunk.get("source", "")
+        citations.append(
+            {
+                # Backward-compat keys
+                "source": display_title,
+                "chunk_id": chunk.get("chunk_id", 0),
+                "snippet": chunk.get("snippet", chunk.get("text", "")[:160].replace("\n", " ")),
+                # Rich metadata for UI display
+                "display_title": display_title,
+                "display_url": chunk.get("display_url"),
+                "source_type": chunk.get("source_type", "unknown"),
+                "section_heading": chunk.get("section_heading"),
+                "page_number": chunk.get("page_number"),
+            }
+        )
+    return citations

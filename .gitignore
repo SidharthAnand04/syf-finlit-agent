@@ -7,8 +7,14 @@ __pycache__/
 # Env
 .env
 
-# Index cache (regenerated at runtime)
-kb/processed/*.pkl
+# Index artifacts are intentionally committed so Vercel cold-starts can load
+# them from the bundle without rebuilding. Rebuild locally with:
+#   python scripts/rebuild_index.py && git add kb/processed/
+# Exclude only the legacy TF-IDF index artifact:
+kb/processed/index.pkl
+
+# SQLite dev databases (production uses Postgres)
+*.db
 
 # Node
 frontend/node_modules/
@@ -17,5 +23,6 @@ frontend/.next/
 # OS
 .DS_Store
 Thumbs.db
+nul
 .vercel
 .env*.local

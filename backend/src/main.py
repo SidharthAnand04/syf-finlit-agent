@@ -16,11 +16,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
+from typing import Optional
 
 load_dotenv()  # Load .env from cwd or parent dirs
 
-from chat import build_prompt, call_anthropic, format_citations
-from retrieval import get_index, retrieve
+from chat import build_prompt, call_anthropic, format_citations, generate_followups
+from retrieval import get_index, refresh_url_sources, retrieve
 from safety import sanitize_input
 
 
@@ -30,8 +31,26 @@ from safety import sanitize_input
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Eagerly import the embedding model so it loads once at startup rather
+    # than on the first query (avoids lazy-init hangs at request time).
     try:
-        get_index()
+        import rag.embedder as _emb  # noqa: F401 – triggers model load
+    except Exception as e:
+        print(f"[WARN] Embedding model could not be loaded: {e}")
+
+    # Fetch any URL sources that are not yet cached in kb/sources/
+    force_rebuild = False
+    try:
+        updated = await refresh_url_sources()
+        if updated:
+            print(f"✓ URL sources fetched: {', '.join(updated)}")
+            force_rebuild = True
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠  URL sources refresh warning: {e}")
+
+    # Pre-warm the TF-IDF index (force rebuild if URL sources were updated)
+    try:
+        get_index(force_rebuild=force_rebuild)
         print("✓ Index loaded successfully.")
     except ValueError as e:
         print(f"⚠  Warning: {e}")
@@ -74,14 +93,22 @@ class ChatRequest(BaseModel):
 
 
 class Citation(BaseModel):
+    # Backward-compatible keys
     source: str
     chunk_id: int
     snippet: str
+    # Rich metadata for UI citation display
+    display_title: str = ""
+    display_url: Optional[str] = None
+    source_type: str = "unknown"
+    section_heading: Optional[str] = None
+    page_number: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation]
+    followups: list[str] = []
 
 
 # ──────────────────────────────────────────────
@@ -117,5 +144,11 @@ async def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Anthropic API error: {e}")
 
-    citations = format_citations(chunks)
-    return ChatResponse(answer=answer, citations=citations)
+    citations = [Citation(**c) for c in format_citations(chunks)]
+
+    try:
+        followups = generate_followups(clean_message, answer, chunks)
+    except Exception:
+        followups = []
+
+    return ChatResponse(answer=answer, citations=citations, followups=followups)

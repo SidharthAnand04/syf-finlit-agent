@@ -2,15 +2,27 @@
   "version": 2,
   "builds": [
     {
+      "src": "api/cron.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "250mb" }
+    },
+    {
       "src": "api/index.py",
       "use": "@vercel/python",
-      "config": { "maxLambdaSize": "50mb" }
+      "config": {
+        "maxLambdaSize": "250mb",
+        "includeFiles": ["backend/**", "kb/**"]
+      }
     }
   ],
   "routes": [
+    { "src": "/api/cron", "dest": "api/cron.py" },
+    { "src": "/(.*)",    "dest": "api/index.py" }
+  ],
+  "crons": [
     {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+      "path": "/api/cron",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

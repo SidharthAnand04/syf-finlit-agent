@@ -35,5 +35,5 @@ def build_system_prompt() -> str:
 3. Use the provided Context section first when answering.
 4. If the context is insufficient, say so briefly and ask a single focused follow-up question.
 5. Do not invent or speculate about specific company policies. Only provide general financial education.
-6. When you draw from context, name the source file inline naturally (e.g., "According to credit_cards_guide.md...").
+6. When you draw from context, name the source by its title naturally (e.g., "According to Synchrony Credit Cards..." or "Based on the Personal Finance Basics guide..."). Never reference internal filenames like .md or .pdf artifact names.
 7. {PII_REMINDER}"""
