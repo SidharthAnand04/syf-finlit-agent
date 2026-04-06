@@ -4,5 +4,53 @@
     "filename": "synchrony_credit_cards_page.md",
     "name": "Synchrony Credit Cards Page",
     "description": "Official Synchrony credit card offerings and financing options"
+  },
+  {
+    "url": "https://www.synchrony.com/financing",
+    "filename": "synchrony_financing.md",
+    "name": "Synchrony Financing Options",
+    "description": "Core hub for financing options, credit cards, Pay Later, and major product flows."
+  },
+  {
+    "url": "https://www.synchrony.com/creditcard/",
+    "filename": "synchrony_creditcard.md",
+    "name": "Synchrony Credit Card Main",
+    "description": "Main Mastercard and everyday credit card page with high-level product positioning."
+  },
+  {
+    "url": "https://www.synchrony.com/financing/synchrony-mastercards",
+    "filename": "synchrony_mastercards.md",
+    "name": "Synchrony Mastercards",
+    "description": "Specific Mastercard product overview page with card types, positioning, and rewards framing."
+  },
+  {
+    "url": "https://www.synchrony.com/help/faqs",
+    "filename": "synchrony_faqs.md",
+    "name": "Synchrony FAQs Hub",
+    "description": "Main FAQ hub for credit cards, loans, and consumer support topics."
+  },
+  {
+    "url": "https://www.synchrony.com/help/faqs?tab=cc-fin",
+    "filename": "synchrony_faqs_cc_fin.md",
+    "name": "Synchrony Credit Card FAQs",
+    "description": "Credit card and financing FAQ view."
+  },
+  {
+    "url": "https://www.synchrony.com/consumer-resources/your-credit-score",
+    "filename": "synchrony_credit_score.md",
+    "name": "Your Credit Score",
+    "description": "Important for credit score education and cardholder benefit guidance."
+  },
+  {
+    "url": "https://www.synchrony.com/financing/digital-wallets",
+    "filename": "synchrony_digital_wallets.md",
+    "name": "Digital Wallets",
+    "description": "Useful for wallet compatibility, setup guidance, and payment method questions."
+  },
+  {
+    "url": "https://www.synchrony.com/blog/spending/promotional-financing-with-synchrony",
+    "filename": "synchrony_promo_financing.md",
+    "name": "Promotional Financing Explainer",
+    "description": "High-value explainer for promotional financing and deferred interest."
   }
 ]

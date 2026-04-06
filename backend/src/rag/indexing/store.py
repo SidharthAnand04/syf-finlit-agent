@@ -4,7 +4,7 @@ rag/indexing/store.py – Persist and load RAG index artifacts to/from disk.
 Three artifacts are stored per build:
   chunks.pkl        – list[RichChunk]  (includes all metadata)
   bm25_index.pkl    – serialized BM25Okapi object
-  dense_matrix.npy  – numpy float32 embedding matrix
+  dense_matrix.npy    numpy float32 embedding matrix
 
 The directory is writable_index_dir() — PROCESSED_DIR when filesystem allows
 it, or /tmp/syf_rag_index as a fallback (e.g. Vercel read-only fs).

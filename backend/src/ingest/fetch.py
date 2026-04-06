@@ -72,17 +72,43 @@ def extract_main_text(html: bytes, url: str = "") -> tuple[str, Optional[str]]:
             if meta:
                 title = meta.title
 
-    # Fallback: naive BeautifulSoup strip
-    if not text and _HAS_BS4:
+    # Fallback: naive BeautifulSoup strip if trafilatura extracted very little
+    if _HAS_BS4 and (not text or len(text) < 2000):
         soup = BeautifulSoup(html, "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "header",
                          "aside", "form", "noscript"]):
             tag.decompose()
         raw = soup.get_text(separator="\n")
-        text = re.sub(r"\n{3,}", "\n\n", raw).strip()
+        bs4_text = re.sub(r"\n{3,}", "\n\n", raw).strip()
+        
+        if len(bs4_text) > len(text):
+            text = bs4_text
+            
         title_tag = soup.find("title")
-        if title_tag:
+        if title_tag and not title:
             title = title_tag.get_text(strip=True)
+
+    # Scrape FAQs from faqTabDetails or faqDetails if present (dynamic content missing from DOM)
+    try:
+        html_str = html.decode("utf-8", errors="ignore")
+        match = re.search(r"var\s+faqTabDetails\s*=\s*(\[[^\n]+\]);", html_str)
+        if match:
+            import json
+            faq_data = json.loads(match.group(1))
+            faq_text_blocks = []
+            for tab_obj in faq_data:
+                for tab_id, sections in tab_obj.items():
+                    for section in sections:
+                        if "sectionName" in section:
+                            faq_text_blocks.append(f"\n## {section['sectionName']}\n")
+                        for q in section.get("questions", []):
+                            prompt = q.get("prompt", "").strip()
+                            answer = BeautifulSoup(q.get("answer", ""), "html.parser").get_text(separator="\n").strip()
+                            faq_text_blocks.append(f"Q: {prompt}\nA: {answer}\n")
+            if faq_text_blocks:
+                text += "\n" + "\n".join(faq_text_blocks)
+    except Exception as e:
+        print(f"Failed to parse FAQs: {e}")
 
     if not text:
         raise ValueError(f"Could not extract text from {url or 'provided HTML'}")
