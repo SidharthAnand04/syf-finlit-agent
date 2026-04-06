@@ -94,15 +94,17 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
             f"---\n\n"
             f"Question: {user_message}\n\n"
             f"Answer in plain text only (no markdown). Stay under 150 words. "
-            f"When you use context, cite the source by its title naturally inline "
-            f"(e.g., 'According to Synchrony Credit Cards...')."
+            f"Use the context above to answer accurately. Do not mention source titles, "
+            f"documents, guides, filenames, or internal files. Present grounded information "
+            f"naturally as Synchrony guidance. If key details are missing, ask one focused "
+            f"follow-up question."
         )
     else:
         prompt = (
             f"Question: {user_message}\n\n"
             f"No relevant context was found in the knowledge base. "
             f"Answer in plain text only (no markdown), under 150 words, "
-            f"from general knowledge or ask a clarifying question."
+            f"from general knowledge. If you cannot answer confidently, ask one focused clarifying question."
         )
     return prompt
 
