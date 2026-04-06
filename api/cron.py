@@ -38,6 +38,7 @@ class handler(BaseHTTPRequestHandler):
         self._run()
 
     def _run(self) -> None:
+        print("Starting Vercel cron job: /api/cron", flush=True)
         # ── Auth: accept CRON_SECRET or ADMIN_TOKEN ──
         cron_secret = os.environ.get("CRON_SECRET", "")
         admin_token = os.environ.get("ADMIN_TOKEN", "")
@@ -46,9 +47,11 @@ class handler(BaseHTTPRequestHandler):
 
         valid_tokens = {t for t in [cron_secret, admin_token] if t}
         if bearer not in valid_tokens:
+            print("Vercel cron job failed: Unauthorized", flush=True)
             self._respond(401, b'{"error":"Unauthorized"}')
             return
 
+        print("Vercel cron job authorized. Running ingestion...", flush=True)
         # ── Run ingestion ──
         try:
             from ingest.pipeline import run_ingestion  # type: ignore
@@ -56,9 +59,11 @@ class handler(BaseHTTPRequestHandler):
             result = asyncio.run(run_ingestion())
             import json
             body = json.dumps(result).encode()
+            print("Vercel cron job completed successfully.", flush=True)
             self._respond(200, body)
         except Exception as exc:
             import json
+            print(f"Vercel cron job failed with exception: {exc}", flush=True)
             body = json.dumps({"error": str(exc)}).encode()
             self._respond(500, body)
 
