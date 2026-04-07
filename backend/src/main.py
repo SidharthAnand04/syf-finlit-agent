@@ -20,7 +20,7 @@ from typing import Optional
 
 load_dotenv()  # Load .env from cwd or parent dirs
 
-from chat import build_prompt, call_anthropic, format_citations, generate_followups
+from chat import build_prompt, call_anthropic, format_citations, generate_followups, classify_mode
 from retrieval import get_index, refresh_url_sources, retrieve
 from safety import sanitize_input
 
@@ -83,6 +83,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
+    markdown: bool = True
 
     @field_validator("message")
     @classmethod
@@ -137,8 +138,9 @@ async def chat(req: ChatRequest):
 
     # Build prompt + call Anthropic
     prompt = build_prompt(clean_message, chunks)
+    mode = classify_mode(clean_message)
     try:
-        answer = call_anthropic(prompt)
+        answer = call_anthropic(prompt, session_id=req.session_id, markdown=req.markdown, mode=mode)
     except EnvironmentError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:

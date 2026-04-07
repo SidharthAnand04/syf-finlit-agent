@@ -21,11 +21,11 @@ export interface ChatResponse {
   followups: string[];
 }
 
-export async function sendMessage(message: string): Promise<ChatResponse> {
+export async function sendMessage(message: string, session_id: string | null = null, markdown: boolean = false): Promise<ChatResponse> {
   const res = await fetch(`${BACKEND_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, session_id, markdown }),
   });
 
   if (!res.ok) {

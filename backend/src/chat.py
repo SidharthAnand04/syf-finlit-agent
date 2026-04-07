@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 
 import anthropic
 
@@ -13,6 +14,9 @@ from safety import build_system_prompt, MAX_CONTEXT_CHARS
 
 MAX_WORDS = 150
 
+# Simple session memory: { session_id: [{"role": "user"|"assistant", "content": "..."}] }
+SESSION_MEMORY: dict[str, list[dict[str, str]]] = {}
+MAX_SESSION_TURNS = 5
 
 def _strip_markdown(text: str) -> str:
     """Remove common markdown constructs so plain text reaches the user."""
@@ -93,39 +97,104 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
             f"Context:\n{context_block}\n\n"
             f"---\n\n"
             f"Question: {user_message}\n\n"
-            f"Answer in plain text only (no markdown). Stay under 150 words. "
-            f"Use the context above to answer accurately. Do not mention source titles, "
-            f"documents, guides, filenames, or internal files. Present grounded information "
-            f"naturally as Synchrony guidance. If key details are missing, ask one focused "
-            f"follow-up question."
+            f"Answer correctly and concisely. Use the context above to answer accurately. "
+            f"Do not mention source titles, documents, guides, filenames, or internal files. "
+            f"Present grounded information naturally as Synchrony guidance. "
         )
     else:
         prompt = (
             f"Question: {user_message}\n\n"
             f"No relevant context was found in the knowledge base. "
-            f"Answer in plain text only (no markdown), under 150 words, "
-            f"from general knowledge. If you cannot answer confidently, ask one focused clarifying question."
+            f"Answer concisely from general knowledge. "
         )
     return prompt
 
 
 # ──────────────────────────────────────────────
-# Anthropic call
+# Anthropic call & Classification
 # ──────────────────────────────────────────────
 
-def call_anthropic(prompt: str) -> str:
+def classify_mode(user_message: str) -> str:
+    """Dynamically determine whether the question is 'synchrony' specific or 'informational'."""
+    client = _get_client()
+    model = "claude-3-haiku-20240307" # Use fastest/cheapest model for classification
+    prompt = (
+        "Classify the following user question into one of two categories:\n"
+        "1. 'synchrony' - if it asks about Synchrony Financial, its products, credit cards, accounts, specific financing policies, or customer service.\n"
+        "2. 'informational' - if it asks about general financial literacy, budgeting, basic credit score mechanics, or general finance without mentioning any brand.\n\n"
+        f"Question: {user_message}\n\n"
+        "Return ONLY the exact word 'synchrony' or 'informational'."
+    )
+    try:
+        res = client.messages.create(
+            model=model,
+            max_tokens=10,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
+        )
+        text = res.content[0].text.strip().lower()
+        if "informational" in text:
+            return "informational"
+    except Exception as e:
+        print(f"Classification failed, defaulting to synchrony. Error: {e}")
+    return "synchrony"
+
+
+def call_anthropic(prompt: str, session_id: str | None = None, markdown: bool = True, mode: str = "synchrony") -> str:
     """Send prompt to Anthropic and return the assistant text response."""
     client = _get_client()
     model = _get_model()
+
+    # Load session history
+    messages = []
+    if session_id and session_id in SESSION_MEMORY:
+        messages = SESSION_MEMORY[session_id].copy()
+
+    messages.append({"role": "user", "content": prompt})
+
     message = client.messages.create(
         model=model,
-        max_tokens=300,
-        system=build_system_prompt(),
-        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1500,
+        system=build_system_prompt(mode) + '\n\nIMPORTANT: You must return ALL your output as a single valid JSON object exactly matching this schema: {"message_len": "SHORT|MEDIUM|LONG", "has_list": true/false, "content": "your actual response to the user in markdown only. If has_list is true, you must use a bullet point list format."}. Do not return any extra text outside the JSON object. Do not use markdown backticks around the json.',
+        messages=messages,
     )
     raw = message.content[0].text
-    clean = _strip_markdown(raw)
-    return _enforce_word_limit(clean)
+    
+    try:
+        print(f"RAW ANTHROPIC OUTPUT:\n{raw}\n---")
+        parsed = json.loads(raw)
+        actual_response = parsed.get("content", raw)
+        msg_len = parsed.get("message_len")
+        has_list = parsed.get("has_list")
+        print(f"Model decided message length: {msg_len} | has_list: {has_list}")
+    except Exception:
+        # Fallback if the model outputs text wrapping the JSON or fails to format
+        import re
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(0))
+                actual_response = parsed.get("content", raw)
+            except Exception:
+                actual_response = raw
+        else:
+            actual_response = raw
+    
+    clean = actual_response if markdown else _strip_markdown(actual_response)
+
+    # Save session history
+    if session_id:
+        user_question = prompt.split("Question: ")[-1].strip() if "Question: " in prompt else prompt
+        
+        SESSION_MEMORY.setdefault(session_id, [])
+        SESSION_MEMORY[session_id].append({"role": "user", "content": user_question})
+        SESSION_MEMORY[session_id].append({"role": "assistant", "content": raw})
+        
+        # Keep only last MAX_SESSION_TURNS interactions (2 messages per turn)
+        if len(SESSION_MEMORY[session_id]) > MAX_SESSION_TURNS * 2:
+            SESSION_MEMORY[session_id] = SESSION_MEMORY[session_id][-MAX_SESSION_TURNS * 2:]
+
+    return clean
 
 
 # ──────────────────────────────────────────────

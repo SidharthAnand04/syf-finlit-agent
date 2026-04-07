@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { sendMessage, type Citation } from "@/lib/api";
 
 interface Message {
@@ -15,10 +16,10 @@ interface Message {
 let nextId = 1;
 
 const QUICK_ACTIONS = [
-  "Interested in getting a new credit card",
-  "Wanting to learn more about your products",
-  "Need help with financing options",
-  "Looking for health and wellness financing",
+  "Get a new credit card",
+  "Learn about your products",
+  "Help with financing options",
+  "Health & wellness financing",
 ];
 
 export default function ChatPage() {
@@ -28,6 +29,13 @@ export default function ChatPage() {
   const [dismissed, setDismissed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionIdRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = crypto.randomUUID();
+    }
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,7 +51,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const res = await sendMessage(trimmed);
+      const res = await sendMessage(trimmed, sessionIdRef.current, true);
       const assistantMsg: Message = {
         id: nextId++,
         role: "assistant",
@@ -178,7 +186,9 @@ export default function ChatPage() {
                   <div className="msg-avatar">S</div>
                   <span className="msg-label">Synchrony Assistant</span>
                 </div>
-                <div className="msg-bubble assistant-bubble">{msg.text}</div>
+                <div className="msg-bubble assistant-bubble">
+                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                </div>
                 {msg.citations && msg.citations.length > 0 && (
                   <div className="sources-block">
                     <button
