@@ -28,12 +28,27 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override DB URL from environment (sync URL for migrations; strip async drivers if needed)
-_db_url = os.environ.get("DATABASE_URL", "")
+# Override DB URL from environment (sync URL for migrations; strip async drivers if needed).
+# Prefer DATABASE_URL_UNPOOLED (Neon direct URL) for migrations – PgBouncer in transaction
+# mode is incompatible with DDL statements that Alembic needs.
+_db_url = os.environ.get("DATABASE_URL_UNPOOLED") or os.environ.get("DATABASE_URL", "")
+
+# Normalise scheme to the synchronous psycopg2 driver
 if _db_url.startswith("postgresql+asyncpg://"):
     _db_url = _db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+elif _db_url.startswith("postgres://"):
+    # Neon / Supabase shorthand – SQLAlchemy needs the full "postgresql://" prefix
+    _db_url = "postgresql://" + _db_url[len("postgres://"):]
 elif _db_url.startswith("sqlite+aiosqlite:///"):
     _db_url = _db_url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+
+# Strip pgbouncer parameters that break DDL migrations
+if "pgbouncer=true" in _db_url or "connection_limit=" in _db_url:
+    from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+    _parsed = urlparse(_db_url)
+    _qs = {k: v for k, v in parse_qs(_parsed.query).items()
+           if k not in ("pgbouncer", "connection_limit")}
+    _db_url = urlunparse(_parsed._replace(query=urlencode(_qs, doseq=True)))
 
 # Resolve relative SQLite paths to the backend/ directory (same logic as db.py)
 _BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
