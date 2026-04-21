@@ -24,10 +24,9 @@ def upgrade() -> None:
 
     # sources
     tags_column = postgresql.JSONB if op.get_context().dialect.name == "postgresql" else JSON
-    _pk_type = sa.BigInteger if op.get_context().dialect.name == "postgresql" else sa.Integer
     op.create_table(
         "sources",
-        sa.Column("id", _pk_type, primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("type", sa.Text, nullable=False),
         sa.Column("name", sa.Text, nullable=False),
         sa.Column("url", sa.Text, nullable=True),
@@ -45,7 +44,7 @@ def upgrade() -> None:
     # documents
     op.create_table(
         "documents",
-        sa.Column("id", _pk_type, primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("source_id", sa.BigInteger,
                   sa.ForeignKey("sources.id", ondelete="CASCADE"), nullable=False),
         sa.Column("canonical_url", sa.Text, nullable=True),
@@ -66,7 +65,7 @@ def upgrade() -> None:
     # chunks – use TEXT for embedding column; handled via raw SQL for vector type
     op.create_table(
         "chunks",
-        sa.Column("id", _pk_type, primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("document_id", sa.BigInteger,
                   sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
         sa.Column("chunk_index", sa.Integer, nullable=False),
@@ -94,7 +93,7 @@ def upgrade() -> None:
     summary_column = postgresql.JSONB if op.get_context().dialect.name == "postgresql" else JSON
     op.create_table(
         "ingestion_runs",
-        sa.Column("id", _pk_type, primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=False,
                   server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("finished_at", sa.TIMESTAMP(timezone=True), nullable=True),

@@ -23,7 +23,6 @@ load_dotenv()  # Load .env from cwd or parent dirs
 from chat import build_prompt, call_anthropic, format_citations, generate_followups, classify_mode
 from retrieval import get_index, refresh_url_sources, retrieve
 from safety import sanitize_input
-import safety as _safety
 
 
 # ──────────────────────────────────────────────
@@ -38,24 +37,6 @@ async def lifespan(app: FastAPI):
         import rag.embedder as _emb  # noqa: F401 – triggers model load
     except Exception as e:
         print(f"[WARN] Embedding model could not be loaded: {e}")
-
-    # Load personality config from DB into the in-memory cache
-    try:
-        import json
-        from db import get_session
-        from sqlalchemy import text
-        async with get_session() as session:
-            result = await session.execute(
-                text("SELECT value FROM settings WHERE key = 'personality'")
-            )
-            row = result.fetchone()
-        if row:
-            _safety.load_personality(json.loads(row[0]))
-            print("✓ Personality config loaded from DB.")
-        else:
-            print("⚠  No personality config in DB — using defaults.")
-    except Exception as e:
-        print(f"⚠  Could not load personality from DB: {e}")
 
     # Fetch any URL sources that are not yet cached in kb/sources/
     force_rebuild = False
@@ -93,9 +74,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from admin import router as admin_router  # noqa: E402
-app.include_router(admin_router, prefix="/admin")
 
 
 # ──────────────────────────────────────────────

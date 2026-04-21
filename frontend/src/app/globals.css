@@ -24,10 +24,9 @@
   --radius:            10px;
   --radius-lg:         18px;
   --font:              'Synchrony Sans', Arial, sans-serif;
-
 }
 
-/* ── Page background ── */
+/* ── Page background (simulates a website behind the widget) ── */
 body {
   font-family: var(--font);
   background: #eaecea;
@@ -49,14 +48,14 @@ body {
   z-index: 0;
 }
 
-/* ── Widget container ── */
+/* ── Widget container — fixed bottom-right floating panel ── */
 .widget {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 700px;
-  max-height: calc(100dvh - 48px);
-  min-height: 500px;
+  width: 560px;
+  max-height: 700px;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
   background: var(--widget-bg);
@@ -78,7 +77,6 @@ body {
   height: 54px;
   background: var(--syf-gold);
   flex-shrink: 0;
-  position: relative;
 }
 
 .widget-header-left {
@@ -154,7 +152,6 @@ body {
   gap: 10px;
   background: var(--transcript-bg);
   scroll-behavior: smooth;
-  min-height: 0; /* allow flex shrink */
 }
 
 .transcript::-webkit-scrollbar { width: 4px; }
@@ -255,10 +252,11 @@ body {
 /* ── Bubbles ── */
 .msg-bubble {
   max-width: 88%;
-  padding: 10px 14px;
+  padding: 9px 13px;
   border-radius: 12px;
-  font-size: 0.875rem;
-  line-height: 1.65;
+  font-size: 0.865rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -266,7 +264,6 @@ body {
   background: var(--user-bg);
   color: var(--user-text);
   border-bottom-right-radius: 4px;
-  white-space: pre-wrap;
 }
 
 .assistant-bubble {
@@ -276,89 +273,22 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* ── Markdown typography inside assistant bubble ── */
 .assistant-bubble p {
-  margin: 0 0 0.6em 0;
+  margin: 0 0 0.75em 0;
 }
+
 .assistant-bubble p:last-child {
   margin-bottom: 0;
 }
 
-.assistant-bubble h1,
-.assistant-bubble h2,
-.assistant-bubble h3,
-.assistant-bubble h4 {
-  font-size: 0.9em;
-  font-weight: 700;
-  margin: 0.75em 0 0.3em;
-  color: var(--syf-charcoal);
-}
-
-.assistant-bubble h1:first-child,
-.assistant-bubble h2:first-child,
-.assistant-bubble h3:first-child {
-  margin-top: 0;
-}
-
-.assistant-bubble ul,
+.assistant-bubble ul, 
 .assistant-bubble ol {
-  margin: 0.4em 0 0.6em 0;
-  padding-left: 1.4em;
+  margin: 0.5em 0 1em 0;
+  padding-left: 1.5em;
 }
 
 .assistant-bubble li {
-  margin-bottom: 0.2em;
-  line-height: 1.55;
-}
-
-.assistant-bubble li:last-child {
-  margin-bottom: 0;
-}
-
-.assistant-bubble strong {
-  font-weight: 650;
-  color: var(--syf-charcoal);
-}
-
-.assistant-bubble a {
-  color: #0057a8;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-}
-
-.assistant-bubble a:hover {
-  color: #003d7a;
-}
-
-.assistant-bubble code {
-  font-size: 0.82em;
-  background: #f0f0f0;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-family: monospace;
-}
-
-.assistant-bubble hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 0.6em 0;
-}
-
-/* ── Inline citation superscripts ── */
-.cite-link {
-  font-size: 0.7em;
-  font-weight: 700;
-  color: #0057a8;
-  text-decoration: none;
-  vertical-align: super;
-  line-height: 0;
-  padding: 0 1px;
-}
-
-.cite-link:hover {
-  color: #003d7a;
-  text-decoration: underline;
+  margin-bottom: 0.25em;
 }
 
 /* ── Collapsible sources ── */
@@ -409,21 +339,6 @@ body {
   padding: 7px 10px;
 }
 
-.source-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background: var(--syf-charcoal);
-  color: #fff;
-  border-radius: 50%;
-  font-size: 0.6rem;
-  font-weight: 700;
-  flex-shrink: 0;
-  margin-right: 5px;
-}
-
 .source-name {
   font-size: 0.71rem;
   font-weight: 600;
@@ -436,7 +351,7 @@ body {
 }
 
 .source-link {
-  color: #0057a8;
+  color: var(--syf-blue, #003087);
   text-decoration: none;
 }
 
@@ -648,7 +563,7 @@ body {
   line-height: 1.4;
 }
 
-/* ── Reopen bubble ── */
+/* ── Reopen bubble (when widget is dismissed) ── */
 .widget-reopen {
   position: fixed;
   bottom: 24px;
@@ -679,13 +594,10 @@ body {
     bottom: 0;
     right: 0;
     left: 0;
-    width: 100% !important;
-    max-height: 100dvh !important;
+    width: 100%;
+    max-height: 100dvh;
     min-height: unset;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
-
-  .widget-resize-handle {
-    display: none;
-  }
 }
+

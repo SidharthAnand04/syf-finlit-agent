@@ -14,15 +14,8 @@ Set EMBEDDING_MODEL env var to override (e.g. all-mpnet-base-v2).
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import Optional
-
-# Suppress HF Hub auth warning and key-mismatch noise
-os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "error")
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-logging.getLogger("transformers").setLevel(logging.ERROR)
 
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore
@@ -55,12 +48,7 @@ def _get_model() -> SentenceTransformer:
                 "Install with: pip install sentence-transformers"
             )
         print(f"Loading embedding model: {EMBEDDING_MODEL}...")
-        try:
-            # Use cached copy first — avoids hub network round-trip
-            _model = SentenceTransformer(EMBEDDING_MODEL, local_files_only=True)
-        except Exception:
-            # Not cached yet; download from HF Hub
-            _model = SentenceTransformer(EMBEDDING_MODEL)
+        _model = SentenceTransformer(EMBEDDING_MODEL)
         print(f"✓ Model loaded. Output dims: {EMBEDDING_DIMS}")
     return _model
 
