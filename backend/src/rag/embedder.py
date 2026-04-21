@@ -12,11 +12,18 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
 # Prevent tokenizers from spawning child processes (safe for serverless)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# Suppress "unauthenticated requests" and hub verbosity warnings
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "error")
+# Suppress sentence-transformers / transformers key-mismatch noise
+logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+logging.getLogger("transformers").setLevel(logging.ERROR)
 
 _model = None
 _available = False
@@ -29,7 +36,12 @@ def _try_load() -> None:
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore
         print(f"Loading embedding model: {model_name}...")
-        _model = SentenceTransformer(model_name)
+        try:
+            # Use cached copy first — avoids hub network round-trip
+            _model = SentenceTransformer(model_name, local_files_only=True)
+        except Exception:
+            # Not cached yet; download from HF Hub
+            _model = SentenceTransformer(model_name)
         _available = True
         print(f"[OK] Embedding model loaded (dims={_model.get_sentence_embedding_dimension()}).")
     except Exception as exc:

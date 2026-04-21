@@ -13,15 +13,20 @@ Routes:
 
   POST /admin/ingest/run            – run ingestion for all enabled sources
   POST /admin/ingest/source/{id}    – run ingestion for one source
-
   GET  /admin/ingest/runs           – list recent ingestion runs (last 20)
 
   GET  /admin/sources/{id}/status   – last document status for a source
+
+  GET  /admin/personality           – get current personality config
+  PUT  /admin/personality           – update personality config
+
+  POST /admin/query-test            – run retrieval and return ranked chunks (debug)
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -33,6 +38,7 @@ from sqlalchemy import text
 
 from db import get_session
 from ingest.pipeline import run_ingestion
+import safety
 
 router = APIRouter(tags=["admin"])
 _bearer = HTTPBearer(auto_error=True)
@@ -66,7 +72,6 @@ class SourceOut(BaseModel):
     tags: dict
     created_at: datetime
     updated_at: datetime
-    # From documents join
     last_fetched_at: Optional[datetime] = None
     doc_status: Optional[str] = None
     doc_error: Optional[str] = None
@@ -92,17 +97,56 @@ class PatchSourceRequest(BaseModel):
     tags: Optional[dict] = None
 
 
+class PersonalityUpdate(BaseModel):
+    persona_name: Optional[str] = None
+    tone_description: Optional[str] = None
+    system_prompt_override: Optional[str] = None
+    extra_rules: Optional[list[str]] = None
+    clear_override: bool = False  # explicitly set system_prompt_override to null
+
+
+class QueryTestRequest(BaseModel):
+    query: str
+    k: int = 4
+
+
+# ──────────────────────────────────────────────
+# DB settings helpers
+# ──────────────────────────────────────────────
+
+async def _load_setting(key: str) -> Optional[str]:
+    async with get_session() as session:
+        result = await session.execute(
+            text("SELECT value FROM settings WHERE key = :key"),
+            {"key": key},
+        )
+        row = result.fetchone()
+    return row[0] if row else None
+
+
+async def _save_setting(key: str, value: str) -> None:
+    async with get_session() as session:
+        await session.execute(
+            text(
+                "INSERT INTO settings (key, value) VALUES (:key, :val) "
+                "ON CONFLICT (key) DO UPDATE SET value = :val, "
+                "updated_at = CURRENT_TIMESTAMP"
+            ),
+            {"key": key, "val": value},
+        )
+        await session.commit()
+
+
 # ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
 
 async def _get_sources_with_status(source_id: int | None = None) -> list[dict]:
-    """Fetch sources joined with their latest document status."""
     where = "WHERE s.id = :sid" if source_id is not None else ""
     sql = text(
         f"""
         WITH ranked_docs AS (
-            SELECT 
+            SELECT
                 id, source_id, last_fetched_at, status, error,
                 ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY created_at DESC) as rn
             FROM documents
@@ -140,7 +184,6 @@ async def list_sources() -> list[dict]:
 
 @router.post("/sources/url", dependencies=[Depends(_verify_token)], status_code=201)
 async def add_url_source(req: AddUrlRequest) -> dict:
-    import json
     async with get_session() as session:
         result = await session.execute(
             text(
@@ -160,41 +203,28 @@ async def upload_pdf_source(
     name: str = Form(...),
     file: UploadFile = File(...),
 ) -> dict:
-    """
-    Upload a PDF.  The raw bytes are stored as base64 in documents.raw_text
-    (MVP approach; suitable for files up to a few MB).
-    """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only .pdf files are accepted.")
 
     pdf_bytes = await file.read()
-    if len(pdf_bytes) > 20 * 1024 * 1024:  # 20 MB guard
+    if len(pdf_bytes) > 20 * 1024 * 1024:
         raise HTTPException(
             status_code=413, detail="PDF too large (max 20 MB for MVP storage)."
         )
     b64 = base64.b64encode(pdf_bytes).decode("ascii")
 
     async with get_session() as session:
-        # Create source row
         src_res = await session.execute(
-            text(
-                "INSERT INTO sources (type, name) VALUES ('pdf', :name) RETURNING id"
-            ),
+            text("INSERT INTO sources (type, name) VALUES ('pdf', :name) RETURNING id"),
             {"name": name},
         )
         source_id = src_res.scalar_one()
-
-        # Create document row with raw bytes (base64)
         await session.execute(
             text(
                 "INSERT INTO documents (source_id, canonical_url, status, raw_text) "
                 "VALUES (:sid, :cu, 'pending', :raw)"
             ),
-            {
-                "sid": source_id,
-                "cu": f"pdf://{name}",
-                "raw": b64,
-            },
+            {"sid": source_id, "cu": f"pdf://{name}", "raw": b64},
         )
         await session.commit()
 
@@ -203,7 +233,6 @@ async def upload_pdf_source(
 
 @router.patch("/sources/{source_id}", dependencies=[Depends(_verify_token)])
 async def update_source(source_id: int, req: PatchSourceRequest) -> dict:
-    import json
     updates: list[str] = []
     params: dict[str, Any] = {"sid": source_id}
     if req.name is not None:
@@ -257,21 +286,18 @@ async def source_status(source_id: int) -> dict:
 
 @router.post("/ingest/run", dependencies=[Depends(_verify_token)])
 async def ingest_all() -> dict:
-    """Trigger ingestion for all enabled sources."""
     result = await run_ingestion()
     return result
 
 
 @router.post("/ingest/source/{source_id}", dependencies=[Depends(_verify_token)])
 async def ingest_one(source_id: int) -> dict:
-    """Trigger ingestion for one specific source."""
     result = await run_ingestion(source_id=source_id)
     return result
 
 
 @router.get("/ingest/runs", dependencies=[Depends(_verify_token)])
 async def list_runs() -> list[dict]:
-    """Return the 20 most recent ingestion runs."""
     async with get_session() as session:
         result = await session.execute(
             text(
@@ -281,3 +307,73 @@ async def list_runs() -> list[dict]:
         )
         rows = result.mappings().fetchall()
     return [dict(r) for r in rows]
+
+
+# ──────────────────────────────────────────────
+# Personality routes
+# ──────────────────────────────────────────────
+
+@router.get("/personality", dependencies=[Depends(_verify_token)])
+async def get_personality() -> dict:
+    """Return the current personality config."""
+    return safety.get_personality()
+
+
+@router.put("/personality", dependencies=[Depends(_verify_token)])
+async def set_personality(update: PersonalityUpdate) -> dict:
+    """Merge a partial personality update, persist to DB, and update in-memory cache."""
+    patch = update.model_dump(exclude={"clear_override"}, exclude_none=True)
+    if update.clear_override:
+        patch["system_prompt_override"] = None
+
+    new_config = safety.update_personality(patch)
+
+    # Persist to DB
+    await _save_setting("personality", json.dumps(new_config))
+
+    return {"message": "Personality updated.", "config": new_config}
+
+
+@router.post("/personality/reset", dependencies=[Depends(_verify_token)])
+async def reset_personality() -> dict:
+    """Reset personality to factory defaults."""
+    defaults = {
+        "persona_name": "Synchrony virtual assistant",
+        "tone_description": "warm, calm, professional",
+        "system_prompt_override": None,
+        "extra_rules": [],
+    }
+    safety.load_personality(defaults)
+    await _save_setting("personality", json.dumps(defaults))
+    return {"message": "Personality reset to defaults.", "config": defaults}
+
+
+# ──────────────────────────────────────────────
+# Query test route
+# ──────────────────────────────────────────────
+
+@router.post("/query-test", dependencies=[Depends(_verify_token)])
+async def query_test(req: QueryTestRequest) -> dict:
+    """Run hybrid retrieval for a query and return ranked chunks (for debugging)."""
+    from retrieval import retrieve
+
+    if not req.query.strip():
+        raise HTTPException(status_code=422, detail="Query cannot be empty.")
+
+    chunks = retrieve(req.query.strip(), k=min(req.k, 10))
+    return {
+        "query": req.query,
+        "chunks": [
+            {
+                "rank": i + 1,
+                "score": round(c.get("score", 0), 4),
+                "source": c.get("display_title") or c.get("source", ""),
+                "url": c.get("display_url"),
+                "section_heading": c.get("section_heading"),
+                "page_number": c.get("page_number"),
+                "source_type": c.get("source_type", "unknown"),
+                "text_preview": c.get("text", "")[:400],
+            }
+            for i, c in enumerate(chunks)
+        ],
+    }

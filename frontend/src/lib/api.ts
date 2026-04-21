@@ -10,7 +10,7 @@ export interface Citation {
   // Rich metadata for UI source cards
   display_title: string;
   display_url: string | null;
-  source_type: string;          // "website" | "pdf" | "markdown" | "txt"
+  source_type: string;
   section_heading: string | null;
   page_number: number | null;
 }
@@ -21,7 +21,11 @@ export interface ChatResponse {
   followups: string[];
 }
 
-export async function sendMessage(message: string, session_id: string | null = null, markdown: boolean = false): Promise<ChatResponse> {
+export async function sendMessage(
+  message: string,
+  session_id: string | null = null,
+  markdown: boolean = false
+): Promise<ChatResponse> {
   const res = await fetch(`${BACKEND_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -59,6 +63,24 @@ export interface IngestionRun {
   finished_at: string | null;
   status: string;
   summary: Record<string, unknown>;
+}
+
+export interface PersonalityConfig {
+  persona_name: string;
+  tone_description: string;
+  system_prompt_override: string | null;
+  extra_rules: string[];
+}
+
+export interface QueryChunk {
+  rank: number;
+  score: number;
+  source: string;
+  url: string | null;
+  section_heading: string | null;
+  page_number: number | null;
+  source_type: string;
+  text_preview: string;
 }
 
 async function adminFetch(
@@ -116,4 +138,27 @@ export const adminApi = {
 
   listRuns: (token: string) =>
     adminFetch(token, "/ingest/runs") as Promise<IngestionRun[]>,
+
+  getPersonality: (token: string) =>
+    adminFetch(token, "/personality") as Promise<PersonalityConfig>,
+
+  setPersonality: (token: string, update: Partial<PersonalityConfig> & { clear_override?: boolean }) =>
+    adminFetch(token, "/personality", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    }) as Promise<{ message: string; config: PersonalityConfig }>,
+
+  resetPersonality: (token: string) =>
+    adminFetch(token, "/personality/reset", { method: "POST" }) as Promise<{
+      message: string;
+      config: PersonalityConfig;
+    }>,
+
+  queryTest: (token: string, query: string, k = 4) =>
+    adminFetch(token, "/query-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, k }),
+    }) as Promise<{ query: string; chunks: QueryChunk[] }>,
 };
