@@ -1,5 +1,4 @@
 {
-  "buildCommand": "pip install -r backend/requirements.txt -q && python3 -m alembic upgrade head",
   "functions": {
     "api/**/*.py": {
       "includeFiles": "{backend/**,kb/**}"

@@ -22,7 +22,6 @@ pypdf>=4.2.0
 sqlalchemy[asyncio]>=2.0.0
 asyncpg>=0.29.0
 aiosqlite>=0.20.0            # SQLite async driver for local dev
-psycopg2-binary>=2.9.9       # Sync Postgres driver – required by Alembic at build/migration time
 
 # Alembic migrations
 alembic>=1.13.0
