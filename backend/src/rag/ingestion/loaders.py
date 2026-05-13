@@ -245,8 +245,8 @@ def load_sources(sources_dir: Path = SOURCES_DIR) -> list[LoadedDocument]:
             if doc.text.strip():
                 docs.append(doc)
             else:
-                print(f"⚠  Skipping {path.name}: no extractable text.")
+                print(f"[WARN]  Skipping {path.name}: no extractable text.")
         except Exception as exc:  # noqa: BLE001
-            print(f"⚠  Could not load {path.name}: {exc}")
+            print(f"[WARN]  Could not load {path.name}: {exc}")
 
     return docs

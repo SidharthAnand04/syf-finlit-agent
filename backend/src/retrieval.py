@@ -1,16 +1,13 @@
 """
-retrieval.py – Backward-compatible public retrieval API.
+retrieval.py – Public retrieval API with in-memory BM25+dense and Supabase pgvector paths.
 
-This module is a thin facade over the new rag/ hybrid pipeline.
-main.py imports get_index, refresh_url_sources, and retrieve from here;
-those signatures are preserved unchanged.
+main.py imports get_index, refresh_url_sources, retrieve, and retrieve_async.
 
-The underlying implementation now uses:
-  - BM25 (rank-bm25) for lexical retrieval
-  - sentence-transformers for dense embedding retrieval
-  - Reciprocal Rank Fusion (RRF) for hybrid reranking
-  - Rich metadata (display_title, display_url, section_heading, page_number)
-    so citations point to the original public URL, not internal filenames.
+Retrieval strategy (auto-selected):
+  • retrieve_async()  – preferred; queries Supabase kb_chunks via pgvector (dense
+                        ANN) + PostgreSQL FTS (lexical), fused with RRF.
+  • retrieve()        – synchronous fallback using the in-memory BM25 + numpy
+                        dense index.  Used by admin query-test and as a safety net.
 """
 from __future__ import annotations
 
@@ -26,7 +23,7 @@ from rag.services.build_service import ensure_index, rebuild_index
 
 
 # ──────────────────────────────────────────────
-# Public API (backward-compatible with main.py)
+# Public API – sync (BM25 + numpy dense)
 # ──────────────────────────────────────────────
 
 def get_index(
@@ -38,7 +35,7 @@ def get_index(
 
 def retrieve(query: str, k: int = 4) -> list[dict]:
     """
-    Return the top-k most relevant chunks for *query* using hybrid retrieval.
+    Synchronous hybrid retrieval (BM25 + dense cosine, in-memory).
 
     Each result dict contains:
       source, chunk_id, snippet          – backward-compat keys
@@ -56,6 +53,68 @@ def retrieve(query: str, k: int = 4) -> list[dict]:
     ]
 
 
+# ──────────────────────────────────────────────
+# Public API – async (Supabase pgvector + FTS)
+# ──────────────────────────────────────────────
+
+async def retrieve_async(query: str, k: int = 4) -> list[dict]:
+    """
+    Async hybrid retrieval via Supabase RPC (HTTPS, no direct PostgreSQL needed).
+
+    Dense:   match_chunks() RPC function using pgvector HNSW index.
+    Lexical: search_chunks_text() RPC function using PostgreSQL FTS.
+    Fusion:  Reciprocal Rank Fusion (k=60).
+
+    Falls back to the synchronous in-memory BM25 retrieve() on any error.
+    """
+    try:
+        from supabase_client import search_dense, search_lexical
+        from rag.indexing.pgvector_index import rrf_fuse
+        from rag.embedder import embed_query, is_available
+
+        dense_rows: list[dict] = []
+        if is_available():
+            q_vec_raw = embed_query(query)
+            if q_vec_raw is not None:
+                dense_rows = await search_dense(
+                    list(float(v) for v in q_vec_raw),
+                    top_k=max(k * 3, 10),
+                )
+
+        lexical_rows = await search_lexical(query, top_k=max(k * 3, 10))
+
+        if not dense_rows and not lexical_rows:
+            raise RuntimeError("No results from Supabase RPC")
+
+        # rrf_fuse expects dicts with a "score" key; map similarity/rank → score
+        for r in dense_rows:
+            r.setdefault("score", r.get("similarity", 0.0))
+        for r in lexical_rows:
+            r.setdefault("score", r.get("rank", 0.0))
+
+        fused = rrf_fuse(dense_rows, lexical_rows, top_k=k)
+
+        return [
+            {
+                "source":          row["display_title"],
+                "chunk_id":        row["chunk_index"],
+                "snippet":         row["snippet"],
+                "display_title":   row["display_title"],
+                "display_url":     row.get("display_url"),
+                "source_type":     row.get("source_type", "unknown"),
+                "section_heading": row.get("section_heading"),
+                "page_number":     row.get("page_number"),
+                "text":            row["text"],
+                "score":           row["score"],
+            }
+            for row in fused
+        ]
+
+    except Exception as exc:
+        print(f"[WARN] Supabase retrieval failed, using BM25 fallback: {exc}")
+        return retrieve(query, k=k)
+
+
 async def refresh_url_sources(force: bool = False) -> list[str]:
     """
     Fetch URL sources from kb/url_sources.json that are not yet cached.
@@ -68,7 +127,7 @@ async def refresh_url_sources(force: bool = False) -> list[str]:
     try:
         entries = json.loads(URL_SOURCES_CONFIG.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"⚠  Could not read {URL_SOURCES_CONFIG}: {exc}")
+        print(f"[WARN]  Could not read {URL_SOURCES_CONFIG}: {exc}")
         return []
 
     SOURCES_DIR.mkdir(parents=True, exist_ok=True)
@@ -84,7 +143,7 @@ async def refresh_url_sources(force: bool = False) -> list[str]:
 
         # Validate URL scheme to prevent SSRF with non-http schemes
         if not url.startswith(("http://", "https://")):
-            print(f"⚠  Skipping URL with unsupported scheme: {url}")
+            print(f"[WARN]  Skipping URL with unsupported scheme: {url}")
             continue
 
         cache_file = SOURCES_DIR / filename
@@ -98,8 +157,8 @@ async def refresh_url_sources(force: bool = False) -> list[str]:
             header = f"# {title or name}\n\nSource: {url}\n\n"
             cache_file.write_text(header + text, encoding="utf-8")
             updated.append(filename)
-            print(f"✓ URL source cached: {filename} ({len(text)} chars from {url})")
+            print(f"[OK] URL source cached: {filename} ({len(text)} chars from {url})")
         except Exception as exc:  # noqa: BLE001
-            print(f"⚠  Could not fetch URL source '{url}': {exc}")
+            print(f"[WARN]  Could not fetch URL source '{url}': {exc}")
 
     return updated

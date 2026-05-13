@@ -1,0 +1,11 @@
+
+> syf-finlit-frontend@0.1.0 dev:clean
+> node scripts/clean-next.js && next dev -p 3001
+
+[clean-next] removed .next
+[clean-next] removed C:\Users\SIDAN_~1\AppData\Local\Temp\syf-finlit-next-dev-10856486b093
+[clean-next] removed node_modules\.cache
+  ▲ Next.js 14.2.3
+  - Local:        http://localhost:3001
+
+ ✓ Starting...

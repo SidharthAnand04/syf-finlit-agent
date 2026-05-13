@@ -10,12 +10,15 @@ The build flow:
   2. chunk_document()     → list[RichChunk] (per doc, flattened)
   3. LexicalIndex(chunks) → BM25 index over tokenized chunk texts
   4. DenseIndex.build()   → embed all chunks with sentence-transformers
-  5. save_index()         → persist all three artifacts to disk
+  5. save_index()         → persist artifacts to disk
+  6. sync_chunks()        → upsert chunks+embeddings to Supabase kb_chunks (async)
 
 On next startup, load_index() restores from disk in milliseconds without
 re-embedding, provided the source files have not changed.
 """
 from __future__ import annotations
+
+import asyncio
 
 from rag.chunking.chunker import chunk_document
 from rag.config import RAGConfig
@@ -54,7 +57,30 @@ def _build(
     dense = DenseIndex.build(all_chunks)
     save_index(all_chunks, lexical._bm25, dense.matrix)
 
+    # Sync to Supabase pgvector in the background (non-blocking)
+    _schedule_pgvector_sync(all_chunks, dense.matrix)
+
     return all_chunks, lexical, dense
+
+
+def _schedule_pgvector_sync(chunks: list[RichChunk], dense_matrix) -> None:
+    """Fire-and-forget: sync chunks+embeddings to Supabase asynchronously."""
+    try:
+        from rag.indexing.pgvector_index import sync_chunks
+
+        async def _run():
+            try:
+                await sync_chunks(chunks, dense_matrix)
+            except Exception as exc:
+                print(f"[WARN] pgvector sync failed (retrieval still works): {exc}")
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(_run())
+        else:
+            loop.run_until_complete(_run())
+    except Exception as exc:
+        print(f"[WARN] Could not schedule pgvector sync: {exc}")
 
 
 def ensure_index(
@@ -98,3 +124,26 @@ def rebuild_index(
     global _cache
     _cache = None
     return ensure_index(force_rebuild=True, config=config)
+
+
+async def seed_pgvector_from_disk() -> None:
+    """
+    Sync the existing on-disk index to Supabase kb_chunks if the table is empty.
+    Called from main.py lifespan so Supabase is seeded without a full rebuild.
+    """
+    try:
+        from rag.indexing.pgvector_index import is_populated, sync_chunks
+
+        if await is_populated():
+            print("[OK] kb_chunks already populated -- skipping seed.")
+            return
+
+        saved = load_index()
+        if saved is None:
+            print("[WARN]  No disk index found -- cannot seed kb_chunks.")
+            return
+
+        chunks, _bm25, dense_matrix = saved
+        await sync_chunks(chunks, dense_matrix)
+    except Exception as exc:
+        print(f"[WARN]  pgvector seed failed (BM25 fallback still active): {exc}")

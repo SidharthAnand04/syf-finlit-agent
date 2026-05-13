@@ -54,9 +54,23 @@ class handler(BaseHTTPRequestHandler):
         print("Vercel cron job authorized. Running ingestion...", flush=True)
         # ── Run ingestion ──
         try:
-            from ingest.pipeline import run_ingestion  # type: ignore
+            from ingest.pipeline import run_ingestion, seed_sources_from_config  # type: ignore
+            from supabase_client import (  # type: ignore
+                ensure_app_tables,
+                ensure_kb_chunks_table,
+                ensure_search_functions,
+            )
 
-            result = asyncio.run(run_ingestion())
+            async def _run() -> dict:
+                await ensure_app_tables()
+                await ensure_kb_chunks_table()
+                await ensure_search_functions()
+                seed = await seed_sources_from_config()
+                if seed.get("seeded", 0) > 0:
+                    print(f"Seeded {seed['seeded']} new sources.", flush=True)
+                return await run_ingestion()
+
+            result = asyncio.run(_run())
             import json
             body = json.dumps(result).encode()
             print("Vercel cron job completed successfully.", flush=True)

@@ -1,313 +1,173 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { sendMessage, type Citation } from "@/lib/api";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, GlassPanel } from "@/components/ui/panel";
+import { cn } from "@/lib/cn";
 
-interface Message {
-  id: number;
-  role: "user" | "assistant" | "error";
-  text: string;
-  citations?: Citation[];
-  sourcesOpen?: boolean;
-  followups?: string[];
-}
-
-let nextId = 1;
-
-const QUICK_ACTIONS = [
-  "Get a new credit card",
-  "Learn about your products",
-  "Help with financing options",
-  "Health & wellness financing",
+const FEATURES = [
+  {
+    title: "Grounded financial education",
+    body: "Answers are shaped from vetted Synchrony public content, with source-aware explanations for confusing credit topics.",
+  },
+  {
+    title: "Operator-ready governance",
+    body: "Admin workflows keep sources, FAQs, tone, and insight reports visible in one polished control plane.",
+  },
+  {
+    title: "Content gap intelligence",
+    body: "Insights highlight weak coverage, risk-heavy questions, low citation patterns, and high-value next fixes.",
+  },
 ];
 
-export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const sessionIdRef = useRef<string>("");
+const METRICS = [
+  ["98%", "Grounding coverage target"],
+  ["<3s", "Fast answer experience"],
+  ["24/7", "Always-on education layer"],
+];
 
-  useEffect(() => {
-    if (!sessionIdRef.current) {
-      sessionIdRef.current = crypto.randomUUID();
-    }
-  }, []);
+const STEPS = [
+  "Customer asks a plain-language credit question.",
+  "The assistant retrieves the most relevant source material.",
+  "The response explains the concept clearly and routes sensitive needs safely.",
+];
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  async function handleSend(text?: string) {
-    const trimmed = (text ?? input).trim();
-    if (!trimmed || loading) return;
-
-    const userMsg: Message = { id: nextId++, role: "user", text: trimmed };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const res = await sendMessage(trimmed, sessionIdRef.current, true);
-      const assistantMsg: Message = {
-        id: nextId++,
-        role: "assistant",
-        text: res.answer,
-        citations: res.citations,
-        sourcesOpen: false,
-        followups: res.followups ?? [],
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
-      const errMsg: Message = {
-        id: nextId++,
-        role: "error",
-        text: err instanceof Error ? err.message : "An unexpected error occurred.",
-      };
-      setMessages((prev) => [...prev, errMsg]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function toggleSources(id: number) {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, sourcesOpen: !m.sourcesOpen } : m))
-    );
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
+export default function LandingPage() {
   return (
-    <div className="page-bg">
+    <main className="app-canvas relative min-h-screen overflow-hidden font-sans">
+      <div className="premium-grid pointer-events-none absolute inset-0 opacity-70" />
+      <div className="pointer-events-none absolute -left-28 -top-36 h-[30rem] w-[30rem] rounded-full bg-syf-gold/20 blur-3xl" />
+      <div className="pointer-events-none absolute right-[-10rem] top-20 h-[34rem] w-[34rem] rounded-full bg-accent-cyan/14 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-16 left-1/3 h-80 w-80 rounded-full bg-accent-violet/14 blur-3xl" />
 
-      {/* ── Synchrony site in the background ── */}
-      <iframe
-        src="https://www.synchrony.com/"
-        className="site-iframe"
-        title="Synchrony Financial"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation allow-modals allow-popups-to-escape-sandbox"
-      />
-
-      {/* ── Reopen bubble (dismissed state) ── */}
-      {dismissed && (
-        <button
-          className="widget-reopen"
-          onClick={() => setDismissed(false)}
-          aria-label="Open Synchrony Assistant"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
-      )}
-
-      {/* ── Chat widget ── */}
-      {!dismissed && (
-      <div className="widget">
-
-        {/* ── Widget Header ── */}
-        <header className="widget-header">
-          <div className="widget-header-left">
-            <div className="widget-avatar">S</div>
-            <div className="widget-title-block">
-              <span className="widget-title">Synchrony Assistant</span>
-              <span className="widget-badge">Beta</span>
-            </div>
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
+        <nav className="glass-panel-dark sticky top-4 z-20 flex items-center justify-between rounded-full px-4 py-3">
+          <Link href="/" className="flex items-center gap-3 text-syf-cream no-underline">
+            <span className="grid h-9 w-9 place-items-center rounded-full border border-syf-gold/40 bg-canvas-950/80 text-sm font-black text-syf-gold shadow-glass-soft">
+              S
+            </span>
+            <span className="hidden text-sm font-black tracking-tight sm:inline">Synchrony FinLit Assistant</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/admin" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "hidden sm:inline-flex")}>
+              Admin
+            </Link>
+            <Link href="/chat" className={buttonVariants({ variant: "primary", size: "sm" })}>
+              Open assistant
+            </Link>
           </div>
-          <button
-            className="widget-close"
-            onClick={() => setDismissed(true)}
-            aria-label="Close assistant"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </header>
+        </nav>
 
-        {/* ── Conversation ── */}
-        <div className="transcript">
-
-          {/* Welcome card — always visible */}
-          <div className="welcome-card">
-            <div className="welcome-text">
-              Hi! I&rsquo;m your Synchrony assistant. How can I help you today?
+        <section className="grid flex-1 items-center gap-10 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:py-20">
+          <div className="max-w-3xl animate-glass-in">
+            <Badge variant="gold" className="mb-5">
+              Financial education, grounded in trusted content
+            </Badge>
+            <h1 className="text-5xl font-black leading-[0.96] tracking-tight text-syf-cream sm:text-6xl lg:text-7xl">
+              Synchrony Financial Literacy Assistant
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70">
+              A premium embedded assistant and admin intelligence layer for explaining credit products clearly,
+              safely, and consistently across customer journeys.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/chat" className={buttonVariants({ variant: "primary", size: "lg" })}>
+                Try the assistant
+              </Link>
+              <Link href="/admin/overview" className={buttonVariants({ variant: "secondary", size: "lg" })}>
+                View dashboard
+              </Link>
             </div>
-            <div className="welcome-meta">Synchrony Assistant · Just now</div>
-          </div>
-
-          {/* Quick actions — shown before first message */}
-          {messages.length === 0 && (
-            <div className="quick-actions">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action}
-                  className="quick-action-btn"
-                  onClick={() => handleSend(action)}
-                  disabled={loading}
-                >
-                  {action}
-                </button>
+            <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
+              {METRICS.map(([value, label]) => (
+                <GlassPanel key={label} className="glass-panel-dark rounded-3xl p-4">
+                  <div className="text-2xl font-black text-syf-cream">{value}</div>
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white/48">{label}</div>
+                </GlassPanel>
               ))}
             </div>
-          )}
+          </div>
 
-          {/* Messages */}
-          {messages.map((msg) => {
-            if (msg.role === "error") {
-              return (
-                <div key={msg.id} className="msg-row assistant">
-                  <div className="error-bubble">{msg.text}</div>
+          <div className="relative animate-glass-in lg:pl-4" style={{ animationDelay: "90ms" }}>
+            <div className="pointer-events-none absolute -inset-8 rounded-[2.5rem] bg-gradient-to-br from-syf-gold/18 via-accent-cyan/12 to-accent-violet/12 blur-2xl" />
+            <GlassPanel className="glass-panel-dark relative overflow-hidden rounded-[2rem] p-4 shadow-glass">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-black text-syf-cream">Executive console</div>
+                  <div className="text-xs text-white/48">Live content health preview</div>
                 </div>
-              );
-            }
-
-            if (msg.role === "user") {
-              return (
-                <div key={msg.id} className="msg-row user">
-                  <div className="msg-bubble user-bubble">{msg.text}</div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={msg.id} className="msg-row assistant">
-                <div className="msg-meta">
-                  <div className="msg-avatar">S</div>
-                  <span className="msg-label">Synchrony Assistant</span>
-                </div>
-                <div className="msg-bubble assistant-bubble">
-                  <ReactMarkdown>{msg.text}</ReactMarkdown>
-                </div>
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="sources-block">
-                    <button
-                      className={`sources-toggle${msg.sourcesOpen ? " open" : ""}`}
-                      onClick={() => toggleSources(msg.id)}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                      {msg.sourcesOpen
-                        ? "Hide sources"
-                        : `View sources (${msg.citations.length})`}
-                    </button>
-                    {msg.sourcesOpen && (
-                      <div className="sources-list">
-                        {msg.citations.map((c) => (
-                          <div key={`${c.source}-${c.chunk_id}`} className="source-item">
-                            <div className="source-name">
-                              {c.display_url ? (
-                                <a
-                                  href={c.display_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="source-link"
-                                >
-                                  {c.display_title || c.source}
-                                </a>
-                              ) : (
-                                <span>{c.display_title || c.source}</span>
-                              )}
-                              {c.source_type === "website" && (
-                                <span className="source-type-badge">Web</span>
-                              )}
-                              {c.source_type === "pdf" && (
-                                <span className="source-type-badge">PDF</span>
-                              )}
-                            </div>
-                            {c.section_heading && (
-                              <div className="source-section">{c.section_heading}</div>
-                            )}
-                            {c.page_number != null && (
-                              <div className="source-page">Page {c.page_number}</div>
-                            )}
-                            <div className="source-snippet">{c.snippet}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {msg.followups && msg.followups.length > 0 && (
-                  <div className="followups-block">
-                    <span className="followups-label">Suggested follow-ups</span>
-                    <div className="followups-list">
-                      {msg.followups.map((q) => (
-                        <button
-                          key={q}
-                          className="followup-chip"
-                          onClick={() => handleSend(q)}
-                          disabled={loading}
-                        >
-                          {q}
-                        </button>
-                      ))}
+                <Badge variant="info">AI report ready</Badge>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {["Coverage", "Citation", "Risk"].map((label, i) => (
+                  <Card key={label} className="p-4">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-syf-muted">{label}</div>
+                    <div className="mt-3 text-3xl font-black text-syf-charcoal">{[92, 87, 14][i]}%</div>
+                    <div className="mt-3 h-2 rounded-full border border-white/50 bg-white/50">
+                      <div
+                        className={cn("h-full rounded-full", i === 2 ? "bg-red-500" : "bg-syf-gold")}
+                        style={{ width: `${[92, 87, 14][i]}%` }}
+                      />
                     </div>
+                  </Card>
+                ))}
+              </div>
+              <Card className="mt-3 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black text-syf-charcoal">Priority fixes</div>
+                    <div className="text-xs text-syf-muted">Ranked by demand, risk, and missing content</div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  <Badge variant="light">3 actions</Badge>
+                </div>
+                <div className="space-y-2">
+                  {["Deferred interest payoff clarity", "Payment allocation FAQ", "Promotional balance citations"].map((item, i) => (
+                    <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/50 bg-white/46 p-3">
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-canvas-900 text-xs font-black text-syf-gold">{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-syf-charcoal">{item}</span>
+                      <span className="h-2 w-2 rounded-full bg-syf-gold shadow-[0_0_16px_rgba(251,198,0,0.7)]" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </GlassPanel>
+          </div>
+        </section>
 
-          {loading && (
-            <div className="msg-row assistant">
-              <div className="msg-meta">
-                <div className="msg-avatar">S</div>
-                <span className="msg-label">Synchrony Assistant</span>
-              </div>
-              <div className="thinking">
-                <span /><span /><span />
-              </div>
-            </div>
-          )}
+        <section className="grid gap-4 pb-12 md:grid-cols-3">
+          {FEATURES.map((feature, i) => (
+            <Card key={feature.title} interactive className="animate-glass-in p-6" style={{ animationDelay: `${120 + i * 70}ms` }}>
+              <div className="mb-4 h-1.5 w-12 rounded-full bg-gradient-to-r from-syf-gold to-accent-cyan" />
+              <h2 className="text-lg font-black text-syf-charcoal">{feature.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-syf-muted">{feature.body}</p>
+            </Card>
+          ))}
+        </section>
 
-          <div ref={bottomRef} />
-        </div>
+        <section className="grid gap-4 pb-14 lg:grid-cols-[0.8fr_1.2fr]">
+          <GlassPanel className="glass-panel-dark rounded-glass p-6">
+            <Badge variant="neutral" className="mb-4">How it works</Badge>
+            <h2 className="text-3xl font-black tracking-tight text-syf-cream">Clear answers with operational visibility.</h2>
+          </GlassPanel>
+          <div className="grid gap-3">
+            {STEPS.map((step, i) => (
+              <Card key={step} className="flex items-center gap-4 p-4">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-syf-gold/35 bg-syf-gold/18 text-sm font-black text-syf-charcoal">
+                  {i + 1}
+                </span>
+                <p className="text-sm font-semibold leading-6 text-syf-charcoal">{step}</p>
+              </Card>
+            ))}
+          </div>
+        </section>
 
-        {/* ── Composer ── */}
-        <div className="composer">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Ask a question…"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            className="composer-input"
-          />
-          <button
-            className="composer-send"
-            onClick={() => handleSend()}
-            disabled={loading || !input.trim()}
-            aria-label="Send message"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
-        </div>
-
-        {/* ── Disclaimer ── */}
-        <div className="widget-disclaimer">
+        <footer className="border-t border-white/10 py-7 text-center text-xs leading-6 text-white/45">
           For general financial education only. Not financial advice.
-        </div>
-
+          <br />
+          Prototype - TMGT 461 - University of Illinois
+        </footer>
       </div>
-      )}
-    </div>
+    </main>
   );
 }

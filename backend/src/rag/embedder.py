@@ -12,11 +12,21 @@ Usage:
 """
 from __future__ import annotations
 
+try:
+    import stdio_utf8  # noqa: F401  # before torch/sentence_transformers console output
+except ImportError:
+    pass
+
 import os
 import sys
 
 # Prevent tokenizers from spawning child processes (safe for serverless)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# Suppress "unauthenticated requests" and hub verbosity warnings
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "error")
+# Log suppression previously used the `logging` module; replace with prints
+print("[CONFIG] Suppressing sentence_transformers/transformers logs (set to ERROR)")
 
 _model = None
 _available = False
@@ -29,7 +39,12 @@ def _try_load() -> None:
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore
         print(f"Loading embedding model: {model_name}...")
-        _model = SentenceTransformer(model_name)
+        try:
+            # Use cached copy first — avoids hub network round-trip
+            _model = SentenceTransformer(model_name, local_files_only=True)
+        except Exception:
+            # Not cached yet; download from HF Hub
+            _model = SentenceTransformer(model_name)
         _available = True
         print(f"[OK] Embedding model loaded (dims={_model.get_sentence_embedding_dimension()}).")
     except Exception as exc:
@@ -45,7 +60,7 @@ def _try_load() -> None:
 # runtime. Fall back to BM25-only retrieval in that environment.
 if os.environ.get("VERCEL") == "1":
     _load_error = "Dense retrieval disabled on Vercel (lambda size constraints)"
-    print("[INFO] Vercel environment detected — using BM25-only retrieval.")
+    print("[INFO] Vercel environment detected -- using BM25-only retrieval.")
 else:
     # Attempt to load on module import so startup is the only time it can hang
     _try_load()

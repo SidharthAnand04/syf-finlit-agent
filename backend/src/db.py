@@ -41,14 +41,35 @@ def _build_url() -> str:
         raise EnvironmentError(
             "DATABASE_URL is not set. Add it to your .env file."
         )
-    # Neon pooled URL uses postgres:// – swap scheme for asyncpg
+
+    # If DB_PASSWORD is set, inject it into the URL before any parsing.
+    # This sidesteps URL-encoding issues with special characters like # @ %.
+    db_password = os.environ.get("DB_PASSWORD")
+    if db_password and "@" in url:
+        # URL is expected to contain a PLACEHOLDER password.
+        # Find the credentials section (between :// and the last @) and replace.
+        try:
+            scheme_sep = "://"
+            scheme_end = url.index(scheme_sep) + len(scheme_sep)
+            at_pos = url.rindex("@")
+            credentials = url[scheme_end:at_pos]
+            if ":" in credentials:
+                username = credentials.split(":", 1)[0]
+            else:
+                username = credentials
+            import urllib.parse
+            safe_pw = urllib.parse.quote(db_password, safe="")
+            url = url[:scheme_end] + f"{username}:{safe_pw}@" + url[at_pos + 1:]
+        except (ValueError, IndexError):
+            pass
+
+    # Normalize scheme
     if url.startswith("postgres://"):
         url = "postgresql+asyncpg://" + url[len("postgres://"):]
     elif url.startswith("postgresql://") and "+asyncpg" not in url:
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    # Resolve relative SQLite paths against the backend/ directory so that
-    # running uvicorn from backend/ and alembic from the project root both
-    # always point at the same db file.
+
+    # SQLite: resolve relative paths and return early
     if "sqlite" in url and "///" in url:
         sep = "///"
         idx = url.index(sep) + len(sep)
@@ -58,7 +79,8 @@ def _build_url() -> str:
             path_part, query = path_part.split("?", 1)
             query = "?" + query
         abs_path = (_BACKEND_DIR / path_part).resolve()
-        url = url[:idx] + str(abs_path).replace("\\", "/") + query
+        return url[:idx] + str(abs_path).replace("\\", "/") + query
+
     return url
 
 
@@ -179,4 +201,27 @@ class IngestionRun(Base):
 
     __table_args__ = (
         CheckConstraint("status IN ('running','ok','error')", name="ck_runs_status"),
+    )
+
+
+class ChatLog(Base):
+    """Logs every user ↔ assistant interaction with full context."""
+
+    __tablename__ = "chat_logs"
+
+    id                = Column(BigInteger, primary_key=True, autoincrement=True)
+    session_id        = Column(Text, nullable=True, index=True)
+    user_message      = Column(Text, nullable=False)
+    answer            = Column(Text, nullable=False)
+    question_type     = Column(Text, nullable=True)          # 'synchrony' | 'informational'
+    citations         = Column(JSON, nullable=False, default=list)   # full citation objects
+    cited_urls        = Column(JSON, nullable=False, default=list)   # just the URLs/titles for quick queries
+    followups         = Column(JSON, nullable=False, default=list)   # suggested follow-up strings
+    chunks_retrieved  = Column(Integer, nullable=True)
+    response_time_ms  = Column(Integer, nullable=True)
+    is_followup       = Column(Boolean, nullable=False, default=False)  # subsequent turn in a session
+    created_at        = Column(
+        TIMESTAMP(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
     )

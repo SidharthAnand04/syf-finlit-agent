@@ -25,6 +25,7 @@ echo ""
   fi
   source .venv/bin/activate 2>/dev/null || source .venv/Scripts/activate
   pip install -q -r requirements.txt
+  export PYTHONIOENCODING=utf-8
   uvicorn src.main:app --reload --port 8000
 ) &
 BACKEND_PID=$!

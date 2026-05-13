@@ -17,6 +17,11 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+# Suppress HF Hub auth warning and key-mismatch noise
+os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+print("[CONFIG] Suppressing sentence_transformers/transformers logs (set to ERROR)")
+
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore
     _HAS_SENTENCE_TRANSFORMERS = True
@@ -48,8 +53,13 @@ def _get_model() -> SentenceTransformer:
                 "Install with: pip install sentence-transformers"
             )
         print(f"Loading embedding model: {EMBEDDING_MODEL}...")
-        _model = SentenceTransformer(EMBEDDING_MODEL)
-        print(f"✓ Model loaded. Output dims: {EMBEDDING_DIMS}")
+        try:
+            # Use cached copy first — avoids hub network round-trip
+            _model = SentenceTransformer(EMBEDDING_MODEL, local_files_only=True)
+        except Exception:
+            # Not cached yet; download from HF Hub
+            _model = SentenceTransformer(EMBEDDING_MODEL)
+        print(f"[OK] Model loaded. Output dims: {EMBEDDING_DIMS}")
     return _model
 
 
