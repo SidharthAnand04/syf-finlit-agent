@@ -128,6 +128,9 @@ async def retrieve_async(query: str, k: int = 4) -> list[dict]:
         return [dict(row) for row in rows]
 
     except Exception as exc:
+        if os.getenv("VERCEL") == "1":
+            print(f"[WARN] Supabase retrieval failed on Vercel; returning no chunks: {exc}")
+            return []
         print(f"[WARN] Supabase retrieval failed, using BM25 fallback: {exc}")
         rows = retrieve(query, k=k)
         _retrieval_cache[key] = (now + _RETRIEVAL_TTL_SECONDS, rows)

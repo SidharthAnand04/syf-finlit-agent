@@ -39,6 +39,10 @@ _MODEL_DIMS = {
 }
 
 EMBEDDING_DIMS = _MODEL_DIMS.get(EMBEDDING_MODEL, 384)
+_USE_ZERO_EMBEDDINGS = (
+    os.getenv("VERCEL") == "1"
+    or os.getenv("USE_ZERO_EMBEDDINGS", "").lower() == "true"
+)
 
 _model: Optional[SentenceTransformer] = None
 
@@ -71,6 +75,9 @@ def embed_texts(texts: list[str], batch_size: int = 32) -> list[list[float]]:
     """
     if not texts:
         return []
+    if _USE_ZERO_EMBEDDINGS or not _HAS_SENTENCE_TRANSFORMERS:
+        print("[INFO] Local embedding model unavailable; using zero-vector placeholders for lexical retrieval.")
+        return [[0.0] * EMBEDDING_DIMS for _ in texts]
 
     model = _get_model()
     # model.encode() returns numpy array; convert to list of lists
