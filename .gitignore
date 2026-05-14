@@ -19,6 +19,8 @@ kb/processed/index.pkl
 # Node
 frontend/node_modules/
 frontend/.next/
+frontend/dev-server.log
+frontend/tsconfig.tsbuildinfo
 
 # OS
 .DS_Store
@@ -26,3 +28,8 @@ Thumbs.db
 nul
 .vercel
 .env*.local
+
+# Local scratch artifacts
+_ul
+backend/_ul
+.claude/

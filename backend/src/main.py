@@ -281,7 +281,7 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     print(f"[CHAT] Formatted {len(citations)} citations.")
 
     try:
-        followups = generate_followups(clean_message, answer, chunks)
+        followups = generate_followups(clean_message, answer, chunks, mode=mode)
         print(f"[CHAT] Generated {len(followups)} follow-up suggestions.")
     except Exception as e:
         print(f"[CHAT] Follow-up generation failed: {e}")

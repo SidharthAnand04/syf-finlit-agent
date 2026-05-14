@@ -42,6 +42,31 @@ def _enforce_word_limit(text: str, limit: int = MAX_WORDS) -> str:
     return " ".join(words[:limit]) + "..."
 
 
+def _clean_followups(value) -> list[str]:
+    """Normalize LLM follow-up output into exactly three short questions."""
+    if not isinstance(value, list):
+        return []
+    followups: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        question = item.strip().lstrip("-0123456789. ").strip()
+        question = re.sub(r"\s+", " ", question)
+        if not question:
+            continue
+        if not question.endswith("?"):
+            question = f"{question}?"
+        key = question.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        followups.append(question)
+        if len(followups) == 3:
+            break
+    return followups
+
+
 _client: anthropic.Anthropic | None = None
 
 
@@ -328,8 +353,68 @@ def generate_followups(
     user_message: str,
     answer: str,
     retrieved_chunks: list[dict],
+    mode: str = "synchrony",
 ) -> list[str]:
-    """Return deterministic follow-ups without a second LLM call."""
+    """Generate tailored follow-up questions with the LLM, with a deterministic fallback."""
+    try:
+        followups = generate_ai_followups(user_message, answer, retrieved_chunks, mode=mode)
+        if followups:
+            return followups
+    except Exception as e:
+        print(f"[FOLLOWUPS] AI generation failed, using fallback: {e}")
+    return _fallback_followups(user_message, retrieved_chunks)
+
+
+def generate_ai_followups(
+    user_message: str,
+    answer: str,
+    retrieved_chunks: list[dict],
+    mode: str = "synchrony",
+) -> list[str]:
+    """Ask the LLM for three specific follow-up questions after each user turn."""
+    client = _get_client()
+    model = _get_model()
+
+    source_titles = []
+    for chunk in retrieved_chunks[:3]:
+        title = chunk.get("display_title") or chunk.get("source")
+        if title and title not in source_titles:
+            source_titles.append(str(title))
+    sources_text = ", ".join(source_titles) if source_titles else "no retrieved source title"
+
+    prompt = (
+        "Create three follow-up questions that the user could naturally ask next.\n\n"
+        f"User question: {user_message}\n\n"
+        f"Assistant answer: {answer[:1800]}\n\n"
+        f"Retrieved source topics: {sources_text}\n\n"
+        "Rules:\n"
+        "- Return only valid JSON with this exact shape: "
+        '{"followups":["question 1","question 2","question 3"]}.\n'
+        "- Each follow-up must be specific to the user question and answer.\n"
+        "- Use first-person plural wording where it represents Synchrony, such as we, our, or us.\n"
+        "- Do not ask for account numbers, Social Security numbers, passwords, or other PII.\n"
+        "- Avoid generic questions like 'Can you explain more?'.\n"
+        "- Keep each question under 90 characters."
+    )
+
+    message = client.messages.create(
+        model=model,
+        max_tokens=260,
+        temperature=0.3,
+        system=(
+            "You generate concise suggested follow-up questions for the Synchrony virtual assistant. "
+            "The assistant represents Synchrony, so use we, our, and us where appropriate. "
+            "Do not provide answers or commentary."
+        ),
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = message.content[0].text
+    parsed = _loads_llm_json(raw)
+    return _clean_followups(parsed.get("followups"))
+
+
+def _fallback_followups(user_message: str, retrieved_chunks: list[dict]) -> list[str]:
+    """Deterministic backup so the UI still has suggestions if the LLM follow-up call fails."""
     text = user_message.lower()
     if "credit score" in text or "credit report" in text:
         return [
