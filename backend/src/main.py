@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import warnings
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def _force_utf8_handlers() -> None:
 _force_utf8_handlers()
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -52,64 +53,76 @@ import safety as _safety
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import json
     from supabase_client import ensure_app_tables, ensure_search_functions, get_setting
+    is_vercel = os.getenv("VERCEL") == "1"
 
     # ── 0. Force UTF-8 on uvicorn handlers (created at app startup) ──────────────────
     _force_utf8_handlers()  # Re-apply to any handlers created by uvicorn
 
     # ── 1. Supabase table bootstrap (BLOCKING — must complete before anything else) ──
-    print("[STARTUP] Ensuring Supabase tables exist...")
-    from supabase_client import ensure_kb_chunks_table
-    await ensure_app_tables()
-    await ensure_kb_chunks_table()
-    print("[OK] Supabase tables ready.")
+    if is_vercel:
+        print("[INFO] Vercel environment detected -- skipping startup DDL/bootstrap.")
+    else:
+        print("[STARTUP] Ensuring Supabase tables exist...")
+        try:
+            from supabase_client import ensure_kb_chunks_table
+            await ensure_app_tables()
+            await ensure_kb_chunks_table()
+            print("[OK] Supabase tables ready.")
+        except Exception as e:
+            print(f"[WARN] Supabase table bootstrap failed: {e}")
 
     # ── 2. Load personality from Supabase (required — uses the tables we just created) ──
-    stored = await get_setting("personality")
-    if stored:
-        _safety.load_personality(json.loads(stored))
-        print("[OK] Personality config loaded from Supabase.")
+    try:
+        stored = await get_setting("personality")
+        if stored:
+            _safety.load_personality(json.loads(stored))
+            print("[OK] Personality config loaded from Supabase.")
+        else:
+            print("[INFO] No personality in Supabase yet -- using defaults.")
+    except Exception as e:
+        print(f"[WARN] Personality config could not be loaded from Supabase: {e}")
+
+    # ── 3. Load local fallback index outside serverless only ─────────────────────────
+    if is_vercel:
+        print("[INFO] Vercel environment detected -- skipping local embedding/index warmup.")
     else:
-        print("[INFO] No personality in Supabase yet -- using defaults.")
+        try:
+            import rag.embedder as _emb  # noqa: F401
+        except Exception as e:
+            print(f"[WARN] Embedding model could not be loaded: {e}")
 
-    # ── 3. Load embedding model ───────────────────────────────────────────────────────
-    try:
-        import rag.embedder as _emb  # noqa: F401
-    except Exception as e:
-        print(f"[WARN] Embedding model could not be loaded: {e}")
+        force_rebuild = False
+        try:
+            updated = await refresh_url_sources()
+            if updated:
+                print(f"[OK] URL sources fetched: {', '.join(updated)}")
+                force_rebuild = True
+        except Exception as e:
+            print(f"[WARN] URL sources refresh warning: {e}")
 
-    # ── 4. Refresh local URL source cache + warm in-memory index ─────────────────────
-    force_rebuild = False
-    try:
-        updated = await refresh_url_sources()
-        if updated:
-            print(f"[OK] URL sources fetched: {', '.join(updated)}")
-            force_rebuild = True
-    except Exception as e:
-        print(f"[WARN] URL sources refresh warning: {e}")
-
-    try:
-        get_index(force_rebuild=force_rebuild)
-        print("[OK] Index loaded successfully.")
-    except ValueError as e:
-        print(f"[WARN] {e}")
+        try:
+            get_index(force_rebuild=force_rebuild)
+            print("[OK] Index loaded successfully.")
+        except ValueError as e:
+            print(f"[WARN] {e}")
 
     # ── 5. Create Supabase search functions + seed sources in the background ────────────
-    async def _bootstrap_search_and_seed():
-        try:
-            await ensure_search_functions()
-            print("[OK] Supabase search functions ready.")
-        except Exception as e:
-            print(f"[WARN] Search function setup failed: {e}")
-        try:
-            from ingest.pipeline import seed_sources_from_config
-            seed_result = await seed_sources_from_config()
-            if seed_result.get("seeded", 0) > 0:
-                print(f"[OK] Seeded {seed_result['seeded']} new sources into Supabase.")
-        except Exception as e:
-            print(f"[WARN] Source seeding failed: {e}")
-    asyncio.create_task(_bootstrap_search_and_seed())
+    if not is_vercel:
+        async def _bootstrap_search_and_seed():
+            try:
+                await ensure_search_functions()
+                print("[OK] Supabase search functions ready.")
+            except Exception as e:
+                print(f"[WARN] Search function setup failed: {e}")
+            try:
+                from ingest.pipeline import seed_sources_from_config
+                seed_result = await seed_sources_from_config()
+                if seed_result.get("seeded", 0) > 0:
+                    print(f"[OK] Seeded {seed_result['seeded']} new sources into Supabase.")
+            except Exception as e:
+                print(f"[WARN] Source seeding failed: {e}")
+        asyncio.create_task(_bootstrap_search_and_seed())
 
     yield
 
@@ -137,6 +150,16 @@ app.include_router(admin_router, prefix="/admin")
 
 
 from supabase_client import log_interaction as _log_interaction
+
+_faqs_cache: dict[str, object] = {"expires": 0.0, "rows": []}
+_FAQS_TTL_SECONDS = int(os.getenv("FAQS_CACHE_TTL_SECONDS", "300"))
+
+
+async def _safe_log_interaction(**kwargs) -> None:
+    try:
+        await _log_interaction(**kwargs)
+    except Exception as e:
+        print(f"[CHAT_LOG] non-blocking write failed: {e}")
 
 
 # ──────────────────────────────────────────────
@@ -185,9 +208,13 @@ async def health():
 
 
 @app.get("/faqs")
-async def get_active_faqs() -> list[dict]:
+async def get_active_faqs(response: Response) -> list[dict]:
     """Return active FAQs as suggested prompts for the chat widget. No auth required."""
     from supabase_client import rest_get
+    now = time.monotonic()
+    if float(_faqs_cache["expires"]) > now:
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+        return list(_faqs_cache["rows"])
     try:
         rows = await rest_get(
             "faqs",
@@ -197,14 +224,17 @@ async def get_active_faqs() -> list[dict]:
                 "select":  "id,category,question,answer_note",
             },
         )
+        _faqs_cache["rows"] = rows
+        _faqs_cache["expires"] = now + _FAQS_TTL_SECONDS
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
         return rows
     except Exception as e:
         print(f"[FAQS] Failed to fetch active FAQs: {e}")
-        return []
+        return list(_faqs_cache["rows"])
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     t_start = time.monotonic()
     print(f"[CHAT] Received message: '{req.message}' | session_id={req.session_id}")
 
@@ -260,21 +290,18 @@ async def chat(req: ChatRequest):
     response_time_ms = int((time.monotonic() - t_start) * 1000)
     print(f"[CHAT] Total response time: {response_time_ms}ms")
 
-    # Log to Supabase — required, not optional.
-    try:
-        await _log_interaction(
-            session_id=req.session_id,
-            user_message=clean_message,
-            answer=answer,
-            question_type=mode,
-            citations=raw_citations,
-            followups=followups,
-            chunks_retrieved=len(chunks),
-            response_time_ms=response_time_ms,
-            is_followup=is_followup,
-        )
-    except Exception as e:
-        print(f"[CHAT_LOG] FATAL: could not write to Supabase chat_logs: {e}")
-        raise HTTPException(status_code=502, detail=f"Supabase chat_logs write failed: {e}")
+    # Log after responding; analytics should not add user-visible latency.
+    background_tasks.add_task(
+        _safe_log_interaction,
+        session_id=req.session_id,
+        user_message=clean_message,
+        answer=answer,
+        question_type=mode,
+        citations=raw_citations,
+        followups=followups,
+        chunks_retrieved=len(chunks),
+        response_time_ms=response_time_ms,
+        is_followup=is_followup,
+    )
 
     return ChatResponse(answer=answer, citations=citations, followups=followups)

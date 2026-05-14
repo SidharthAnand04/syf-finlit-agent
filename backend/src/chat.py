@@ -232,29 +232,21 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
 # ──────────────────────────────────────────────
 
 def classify_mode(user_message: str) -> str:
-    """Dynamically determine whether the question is 'synchrony' specific or 'informational'."""
-    client = _get_client()
-    model = _get_model()  # Use the default model from env instead of hardcoded haiku string
-    prompt = (
-        "Classify the following user question into one of two categories:\n"
-        "1. 'synchrony' - if it asks about Synchrony Financial, its products, credit cards, accounts, specific financing policies, or customer service.\n"
-        "2. 'informational' - if it asks about general financial literacy, budgeting, basic credit score mechanics, or general finance without mentioning any brand.\n\n"
-        f"Question: {user_message}\n\n"
-        "Return ONLY the exact word 'synchrony' or 'informational'."
-    )
-    try:
-        res = client.messages.create(
-            model=model,
-            max_tokens=10,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-        )
-        text = res.content[0].text.strip().lower()
-        if "informational" in text:
-            return "informational"
-    except Exception as e:
-        print(f"Classification failed, defaulting to synchrony. Error: {e}")
-    return "synchrony"
+    """Classify without an extra LLM round trip."""
+    text = user_message.lower()
+    synchrony_terms = {
+        "synchrony", "carecredit", "mysynchrony", "synchrony bank",
+        "amazon store card", "lowe", "paypal credit", "sam's club",
+        "tjx", "qvc", "walgreens", "verizon visa",
+    }
+    if any(term in text for term in synchrony_terms):
+        return "synchrony"
+    account_terms = {
+        "application", "apply", "approved", "approval", "credit card",
+        "store card", "financing", "deferred interest", "promotional",
+        "payment", "late fee", "minimum payment", "apr", "rewards",
+    }
+    return "synchrony" if any(term in text for term in account_terms) else "informational"
 
 
 def call_anthropic(
@@ -337,36 +329,38 @@ def generate_followups(
     answer: str,
     retrieved_chunks: list[dict],
 ) -> list[str]:
-    """Generate 3 relevant follow-up question suggestions via the LLM."""
-    sources = ", ".join({c["source"] for c in retrieved_chunks}) if retrieved_chunks else ""
-    context_note = (
-        f"The response referenced Synchrony knowledge sources: {sources}.\n\n"
-        if sources
-        else ""
-    )
-
-    prompt = (
-        f'A user asked a Synchrony Financial assistant: "{user_message}"\n\n'
-        f'The assistant replied: "{answer}"\n\n'
-        f"{context_note}"
-        f"Suggest exactly 3 concise follow-up questions the user might naturally ask next. "
-        f"Each question should relate to the user's original question, the assistant's answer, "
-        f"or Synchrony Financial products, credit cards, or personal finance topics. "
-        f"Return only the 3 questions, one per line, with no numbering, bullets, or extra text."
-    )
-
-    client = _get_client()
-    message = client.messages.create(
-        model=_get_model(),
-        max_tokens=150,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    lines = [
-        ln.strip().lstrip("•-– ").strip()
-        for ln in message.content[0].text.splitlines()
-        if ln.strip()
+    """Return deterministic follow-ups without a second LLM call."""
+    text = user_message.lower()
+    if "credit score" in text or "credit report" in text:
+        return [
+            "How can I improve my credit score?",
+            "What affects my credit utilization?",
+            "How often should I check my credit report?",
+        ]
+    if "deferred" in text or "promotional" in text or "financing" in text:
+        return [
+            "How does deferred interest work?",
+            "What happens if I miss a promotional financing payment?",
+            "Where can I review financing offer details?",
+        ]
+    if "payment" in text or "late" in text or "minimum" in text:
+        return [
+            "How are minimum payments calculated?",
+            "What should I do if I missed a payment?",
+            "How can I set up payment reminders?",
+        ]
+    if retrieved_chunks:
+        source = retrieved_chunks[0].get("display_title") or retrieved_chunks[0].get("source") or "this topic"
+        return [
+            f"What else should I know about {source}?",
+            "Can you explain that in simpler terms?",
+            "What are the next steps I should consider?",
+        ]
+    return [
+        "Can you give an example?",
+        "What should I watch out for?",
+        "How can I learn more about this?",
     ]
-    return lines[:3]
 
 
 # ──────────────────────────────────────────────

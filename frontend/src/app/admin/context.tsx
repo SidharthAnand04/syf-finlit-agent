@@ -35,7 +35,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function verify(t: string): Promise<void> {
-    await adminApi.listSources(t);
+    await adminApi.ping(t);
     setToken(t);
     localStorage.setItem(STORAGE_KEY, t);
   }

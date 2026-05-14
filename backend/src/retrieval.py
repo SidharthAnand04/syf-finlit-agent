@@ -12,6 +12,8 @@ Retrieval strategy (auto-selected):
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 from rag.config import RAGConfig, SOURCES_DIR, URL_SOURCES_CONFIG
@@ -20,6 +22,13 @@ from rag.indexing.lexical import LexicalIndex
 from rag.retrieval.hybrid import retrieve as _hybrid_retrieve
 from rag.schemas import RichChunk
 from rag.services.build_service import ensure_index, rebuild_index
+
+_retrieval_cache: dict[tuple[str, int], tuple[float, list[dict]]] = {}
+_RETRIEVAL_TTL_SECONDS = int(os.getenv("RETRIEVAL_CACHE_TTL_SECONDS", "180"))
+
+
+def _cache_key(query: str, k: int) -> tuple[str, int]:
+    return (" ".join(query.lower().split()), k)
 
 
 # ──────────────────────────────────────────────
@@ -67,6 +76,12 @@ async def retrieve_async(query: str, k: int = 4) -> list[dict]:
 
     Falls back to the synchronous in-memory BM25 retrieve() on any error.
     """
+    key = _cache_key(query, k)
+    now = time.monotonic()
+    cached = _retrieval_cache.get(key)
+    if cached and cached[0] > now:
+        return [dict(row) for row in cached[1]]
+
     try:
         from supabase_client import search_dense, search_lexical
         from rag.indexing.pgvector_index import rrf_fuse
@@ -94,7 +109,7 @@ async def retrieve_async(query: str, k: int = 4) -> list[dict]:
 
         fused = rrf_fuse(dense_rows, lexical_rows, top_k=k)
 
-        return [
+        rows = [
             {
                 "source":          row["display_title"],
                 "chunk_id":        row["chunk_index"],
@@ -109,10 +124,14 @@ async def retrieve_async(query: str, k: int = 4) -> list[dict]:
             }
             for row in fused
         ]
+        _retrieval_cache[key] = (now + _RETRIEVAL_TTL_SECONDS, rows)
+        return [dict(row) for row in rows]
 
     except Exception as exc:
         print(f"[WARN] Supabase retrieval failed, using BM25 fallback: {exc}")
-        return retrieve(query, k=k)
+        rows = retrieve(query, k=k)
+        _retrieval_cache[key] = (now + _RETRIEVAL_TTL_SECONDS, rows)
+        return [dict(row) for row in rows]
 
 
 async def refresh_url_sources(force: bool = False) -> list[str]:

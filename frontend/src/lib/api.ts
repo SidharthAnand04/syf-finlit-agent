@@ -1,4 +1,39 @@
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const FAQ_CACHE_KEY = "syf-active-faqs-cache-v1";
+const ADMIN_CACHE_PREFIX = "syf-admin-cache-v1:";
+const FAQ_CACHE_MS = 5 * 60 * 1000;
+const ADMIN_CACHE_MS = 45 * 1000;
+
+function readTimedCache<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { expires: number; value: T };
+    if (parsed.expires < Date.now()) return null;
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeTimedCache<T>(key: string, value: T, ttlMs: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ expires: Date.now() + ttlMs, value }));
+  } catch {
+    // localStorage may be full or disabled; caching is best effort.
+  }
+}
+
+function clearAdminCache(): void {
+  if (typeof window === "undefined") return;
+  for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(ADMIN_CACHE_PREFIX)) localStorage.removeItem(key);
+  }
+  localStorage.removeItem(FAQ_CACHE_KEY);
+}
 
 // ── Chat API ───────────────────────────────────────────────────────────────
 
@@ -50,10 +85,14 @@ export interface ActiveFAQ {
 }
 
 export async function getActiveFaqs(): Promise<ActiveFAQ[]> {
+  const cached = readTimedCache<ActiveFAQ[]>(FAQ_CACHE_KEY);
+  if (cached) return cached;
   try {
     const res = await fetch(`${BACKEND_URL}/faqs`);
     if (!res.ok) return [];
-    return res.json() as Promise<ActiveFAQ[]>;
+    const faqs = await res.json() as ActiveFAQ[];
+    writeTimedCache(FAQ_CACHE_KEY, faqs, FAQ_CACHE_MS);
+    return faqs;
   } catch {
     return [];
   }
@@ -118,6 +157,13 @@ async function adminFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<unknown> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const cacheKey = `${ADMIN_CACHE_PREFIX}${path}`;
+  if (method === "GET") {
+    const cached = readTimedCache<unknown>(cacheKey);
+    if (cached !== null) return cached;
+  }
+
   const res = await fetch(`${BACKEND_URL}/admin${path}`, {
     ...options,
     headers: {
@@ -136,7 +182,13 @@ async function adminFetch(
     }
     throw new Error(detail || `Request failed: ${res.status}`);
   }
-  return parseJsonValue(text);
+  const parsed = parseJsonValue(text);
+  if (method === "GET") {
+    writeTimedCache(cacheKey, parsed, ADMIN_CACHE_MS);
+  } else {
+    clearAdminCache();
+  }
+  return parsed;
 }
 
 function parseJsonValue(text: string): unknown {
@@ -369,6 +421,9 @@ function withTimeRange(path: string, range?: TimeRangeParams): string {
 }
 
 export const adminApi = {
+  ping: (token: string) =>
+    adminFetch(token, "/ping") as Promise<{ status: string }>,
+
   listSources: (token: string) =>
     adminFetch(token, "/sources") as Promise<Source[]>,
 

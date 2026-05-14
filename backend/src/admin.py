@@ -43,7 +43,6 @@ from pydantic import BaseModel, field_validator
 
 import safety
 import supabase_client as _sb
-from ingest.pipeline import run_ingestion
 
 router = APIRouter(tags=["admin"])
 _bearer = HTTPBearer(auto_error=True)
@@ -62,6 +61,11 @@ def _verify_token(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> Non
         )
     if creds.credentials != admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token.")
+
+
+@router.get("/ping", dependencies=[Depends(_verify_token)])
+async def ping() -> dict:
+    return {"status": "ok"}
 
 
 # ──────────────────────────────────────────────
@@ -360,12 +364,16 @@ async def source_status(source_id: int) -> dict:
 
 @router.post("/ingest/run", dependencies=[Depends(_verify_token)])
 async def ingest_all() -> dict:
+    from ingest.pipeline import run_ingestion
+
     result = await run_ingestion()
     return result
 
 
 @router.post("/ingest/source/{source_id}", dependencies=[Depends(_verify_token)])
 async def ingest_one(source_id: int) -> dict:
+    from ingest.pipeline import run_ingestion
+
     result = await run_ingestion(source_id=source_id)
     return result
 
