@@ -26,7 +26,7 @@ function writeTimedCache<T>(key: string, value: T, ttlMs: number): void {
   }
 }
 
-function clearAdminCache(): void {
+export function clearAdminCache(): void {
   if (typeof window === "undefined") return;
   for (let i = localStorage.length - 1; i >= 0; i -= 1) {
     const key = localStorage.key(i);
@@ -158,7 +158,7 @@ async function adminFetch(
   options: RequestInit = {}
 ): Promise<unknown> {
   const method = (options.method ?? "GET").toUpperCase();
-  const cacheKey = `${ADMIN_CACHE_PREFIX}${path}`;
+  const cacheKey = `${ADMIN_CACHE_PREFIX}${token}:${path}`;
   if (method === "GET") {
     const cached = readTimedCache<unknown>(cacheKey);
     if (cached !== null) return cached;

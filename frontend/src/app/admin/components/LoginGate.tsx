@@ -13,7 +13,7 @@ export function LoginGate() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = val.trim();
-    if (!trimmed) { setLocalErr("Token is required."); return; }
+    if (!trimmed) { setLocalErr("Password is required."); return; }
     setLocalErr("");
     setSubmitting(true);
     try {
@@ -89,16 +89,16 @@ export function LoginGate() {
         {/* Form */}
         <div style={{ padding: "28px 26px 30px" }}>
           <p style={{ fontSize: 13, color: C.muted, marginBottom: 22, lineHeight: 1.6 }}>
-            Enter your admin token to access the knowledge base management, personality configuration, and analytics.
+            Enter the admin password to access knowledge base management, personality configuration, and analytics.
           </p>
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.charcoal, marginBottom: 6 }}>
-                Admin Token
+                Admin Password
               </label>
               <input
                 type="password"
-                placeholder="Paste token…"
+                placeholder="Enter password..."
                 value={val}
                 onChange={(e) => { setVal(e.target.value); setLocalErr(""); }}
                 className="admin-input"
@@ -128,7 +128,7 @@ export function LoginGate() {
               disabled={busy}
               style={{ width: "100%", padding: "12px 0", fontSize: 14, textAlign: "center" }}
             >
-              {busy ? "Verifying…" : "Sign in"}
+              {busy ? "Verifying..." : "Sign in"}
             </button>
           </form>
         </div>

@@ -181,7 +181,9 @@ export default function OverviewPage() {
                     const dur = r.finished_at
                       ? `${Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)}s`
                       : "…";
-                    const s = r.summary as Record<string, unknown>;
+                    const s = r.summary && typeof r.summary === "object"
+                      ? (r.summary as Record<string, unknown>)
+                      : {};
                     return (
                       <tr key={r.id}>
                         <td style={{ fontFamily: FONT }}>{relTime(r.started_at)}</td>

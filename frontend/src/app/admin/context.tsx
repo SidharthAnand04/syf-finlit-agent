@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { adminApi } from "@/lib/api";
+import { adminApi, clearAdminCache } from "@/lib/api";
 
 interface AdminContextValue {
   token: string | null;
@@ -18,7 +18,7 @@ const AdminContext = createContext<AdminContextValue | null>(null);
 const STORAGE_KEY = "syf-admin-token";
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [token, setToken]       = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isVerifying, setVfying] = useState(true);
   const [authError, setAuthError] = useState("");
 
@@ -26,7 +26,11 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const saved = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (saved) {
       verify(saved)
-        .catch(() => {/* invalid saved token — silently discard */})
+        .catch(() => {
+          localStorage.removeItem(STORAGE_KEY);
+          clearAdminCache();
+          setToken(null);
+        })
         .finally(() => setVfying(false));
     } else {
       setVfying(false);
@@ -47,11 +51,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       await verify(t);
     } catch (e: unknown) {
       localStorage.removeItem(STORAGE_KEY);
+      clearAdminCache();
       setToken(null);
       const msg = e instanceof Error ? e.message : String(e);
       setAuthError(
         msg.includes("401") || msg.includes("Invalid")
-          ? "Invalid token. Please try again."
+          ? "Invalid password. Please try again."
           : msg || "Authentication failed."
       );
       throw e;
@@ -62,6 +67,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   function signOut() {
     if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+    clearAdminCache();
     setToken(null);
     setAuthError("");
   }
