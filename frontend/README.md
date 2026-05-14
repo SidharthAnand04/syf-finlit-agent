@@ -1,6 +1,6 @@
 # Frontend
 
-Next.js app for the public chat experience and admin console.
+Next.js app for the public chat experience and admin console
 
 ## Key Paths
 
