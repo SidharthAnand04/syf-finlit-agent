@@ -1,0 +1,3 @@
+# Keep curated source and fallback artifacts tracked.
+processed/index.pkl
+*.tmp
