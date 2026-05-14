@@ -240,8 +240,8 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
             f"<context>\n{context_block}\n</context>\n\n"
             f"Question: {user_message}\n\n"
             f"Answer correctly and concisely using the context above. "
-            f"Do NOT use inline citations like [1] or [2] in your text. "
-            f"Present grounded information naturally as Synchrony guidance."
+            f"Use inline citations like [1] or [2] when you rely on a source. "
+            f"Present grounded information naturally from our Synchrony perspective."
         )
     else:
         prompt = (
