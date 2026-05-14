@@ -41,7 +41,15 @@ from typing import Optional
 
 load_dotenv()  # Load .env from cwd or parent dirs
 
-from chat import build_prompt, call_anthropic, format_citations, generate_followups, classify_mode, SESSION_MEMORY
+from chat import (
+    OUT_OF_SCOPE_RESPONSE,
+    SESSION_MEMORY,
+    build_prompt,
+    call_anthropic,
+    classify_mode,
+    format_citations,
+    generate_followups,
+)
 from retrieval import get_index, refresh_url_sources, retrieve, retrieve_async
 from safety import sanitize_input
 import safety as _safety
@@ -251,6 +259,25 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     is_followup = prior_turns > 0
     print(f"[CHAT] is_followup={is_followup} | prior_turns={prior_turns}")
 
+    print(f"[CHAT] Classifying mode...")
+    mode = classify_mode(clean_message)
+    print(f"[CHAT] Mode classified as: '{mode}'")
+    if mode == "out_of_scope":
+        response_time_ms = int((time.monotonic() - t_start) * 1000)
+        background_tasks.add_task(
+            _safe_log_interaction,
+            session_id=req.session_id,
+            user_message=clean_message,
+            answer=OUT_OF_SCOPE_RESPONSE,
+            question_type=mode,
+            citations=[],
+            followups=[],
+            chunks_retrieved=0,
+            response_time_ms=response_time_ms,
+            is_followup=is_followup,
+        )
+        return ChatResponse(answer=OUT_OF_SCOPE_RESPONSE, citations=[], followups=[])
+
     # Retrieve — prefer Supabase pgvector, fall back to in-memory BM25
     try:
         print(f"[CHAT] Retrieving chunks for query...")
@@ -261,9 +288,6 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=503, detail=str(e))
 
     # Build prompt + call Anthropic
-    print(f"[CHAT] Classifying mode...")
-    mode = classify_mode(clean_message)
-    print(f"[CHAT] Mode classified as: '{mode}'")
     prompt = build_prompt(clean_message, chunks)
     try:
         print(f"[CHAT] Calling Anthropic (model={os.getenv('ANTHROPIC_MODEL', 'claude-haiku-4-5')})...")

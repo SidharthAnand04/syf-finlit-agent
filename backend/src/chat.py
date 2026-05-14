@@ -256,22 +256,42 @@ def build_prompt(user_message: str, retrieved_chunks: list[dict]) -> str:
 # Anthropic call & Classification
 # ──────────────────────────────────────────────
 
+OUT_OF_SCOPE_RESPONSE = (
+    "I can help with our credit cards, financing, payments, credit basics, and financial education. "
+    "I cannot answer unrelated general-knowledge questions here."
+)
+
+
 def classify_mode(user_message: str) -> str:
-    """Classify without an extra LLM round trip."""
+    """Classify the message as synchrony, informational, or out_of_scope."""
     text = user_message.lower()
     synchrony_terms = {
         "synchrony", "carecredit", "mysynchrony", "synchrony bank",
         "amazon store card", "lowe", "paypal credit", "sam's club",
-        "tjx", "qvc", "walgreens", "verizon visa",
+        "tjx", "qvc", "walgreens", "verizon visa", "rooms to go",
+        "jcp", "jcpenney", "jcp credit", "sam's club credit",
     }
     if any(term in text for term in synchrony_terms):
         return "synchrony"
+
+    non_synchrony_brands = {
+        "honda", "toyota", "ford", "chevy", "chevrolet", "tesla", "bmw",
+        "mercedes", "apple card", "capital one", "chase", "discover",
+        "american express", "amex", "citi", "citibank", "bank of america",
+    }
+    if any(term in text for term in non_synchrony_brands):
+        return "out_of_scope"
+
     account_terms = {
         "application", "apply", "approved", "approval", "credit card",
         "store card", "financing", "deferred interest", "promotional",
         "payment", "late fee", "minimum payment", "apr", "rewards",
+        "interest", "statement balance", "current balance", "grace period",
+        "credit score", "credit report", "credit utilization", "fico",
+        "budget", "budgeting", "debt", "loan", "installment", "cash back",
+        "balance transfer", "autopay", "due date", "billing cycle",
     }
-    return "synchrony" if any(term in text for term in account_terms) else "informational"
+    return "informational" if any(term in text for term in account_terms) else "out_of_scope"
 
 
 def call_anthropic(
