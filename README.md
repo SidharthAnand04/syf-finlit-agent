@@ -1,78 +1,29 @@
 # Synchrony Financial Literacy Assistant
 
-This repository contains a full-stack financial literacy assistant built for a Synchrony capstone project. The app combines a public chat experience, a FastAPI retrieval backend, a Supabase/Postgres knowledge base, and an admin console for managing sources, FAQs, personality settings, and analytics.
+Full-stack AI assistant for Synchrony financial education. The app includes a public chat UI, a FastAPI backend, Supabase/Postgres RAG storage, and an admin console for content, FAQs, personality settings, and analytics.
 
-The assistant is informational only. It does not access customer accounts, make credit decisions, approve applications, or request sensitive personal information.
+The assistant is informational only. It cannot access customer accounts, approve applications, make credit decisions, or request sensitive personal information.
 
-## Live Projects
+## Live URLs
 
 - Frontend: `https://syf-finlit.vercel.app`
 - Backend API: `https://syf-finlit-agent.vercel.app`
-- Frontend Vercel project: `frontend`
-- Backend Vercel project: `syf-finlit-agent`
+- Admin panel: `https://syf-finlit.vercel.app/admin`
 
-Important: the frontend app lives in `frontend/`. If deploying from Vercel Git integration, set the frontend project's Root Directory to `frontend`.
+## Repository Layout
 
-## What Is Included
-
+- `api/` - Vercel Python serverless entrypoints.
+- `backend/src/` - FastAPI app, chat orchestration, retrieval, ingestion, admin API, and Supabase integration.
 - `frontend/` - Next.js chat UI and admin console.
-- `backend/src/` - FastAPI app, chat orchestration, retrieval, admin API, safety prompt, ingestion, and Supabase helpers.
-- `api/` - Vercel Python entrypoints for the backend and cron route.
-- `kb/sources/` - Seed knowledge base markdown files.
-- `kb/processed/` - Committed fallback BM25/vector artifacts used for cold starts and local fallback retrieval.
+- `kb/` - Seed knowledge base content and local fallback artifacts.
 - `alembic/` - Database migration history.
-- `scripts/` - Utility scripts for local indexing, Supabase setup, and inspection.
+- `docs/` - Handoff documentation.
 
-## Main Features
+## Production RAG Path
 
-- RAG chat over Synchrony and financial literacy content.
-- AI-generated follow-up questions after every chat response, with deterministic fallback suggestions if the follow-up model call fails.
-- Synchrony-style first-person voice using "we", "our", and "us" where appropriate.
-- Admin panel for:
-  - Source management and ingestion.
-  - FAQ/startup question management.
-  - Personality prompt configuration.
-  - Query testing.
-  - Chat analytics and AI insight reports.
-- Supabase/Postgres-backed storage for sources, chunks, chat logs, settings, FAQs, and reports.
-- Local fallback retrieval using committed knowledge base artifacts.
+Production retrieval is Supabase-first. The chat endpoint calls `retrieve_async()`, which searches Supabase `kb_chunks` through pgvector/FTS helpers and fuses dense and lexical results. On Vercel, local index warmup is skipped. If Supabase retrieval fails on Vercel, the backend returns no chunks instead of falling back to the old local KB index.
 
-## Architecture
-
-The browser talks to the Next.js frontend. Chat requests go to the FastAPI backend. The backend sanitizes input, retrieves relevant knowledge base chunks, builds a grounded prompt, calls Anthropic, generates AI follow-up questions, returns citations, and logs analytics asynchronously.
-
-Admin routes are protected by `ADMIN_TOKEN`. Public chat routes do not expose admin operations.
-
-## Required Environment Variables
-
-Backend:
-
-```env
-ANTHROPIC_API_KEY=...
-ANTHROPIC_MODEL=claude-haiku-4-5
-ADMIN_TOKEN=...
-CRON_SECRET=...
-CORS_ORIGIN=https://syf-finlit.vercel.app
-SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
-SUPABASE_ANON_KEY=...
-```
-
-Frontend:
-
-```env
-NEXT_PUBLIC_BACKEND_URL=https://syf-finlit-agent.vercel.app
-```
-
-Optional tuning:
-
-```env
-FAQS_CACHE_TTL_SECONDS=300
-AI_INSIGHTS_MAX_TOKENS=8000
-RAG_FINAL_TOP_K=4
-RAG_LEXICAL_TOP_K=10
-RAG_RERANKER_ENABLED=true
-```
+The `kb/` folder is still kept because admin ingestion and source seeding use `kb/url_sources.json`, and the committed processed files support local fallback workflows.
 
 ## Local Development
 
@@ -92,17 +43,17 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The frontend defaults to `http://localhost:8000` if `NEXT_PUBLIC_BACKEND_URL` is not set.
+The frontend defaults to `http://localhost:8000` for the backend unless `NEXT_PUBLIC_BACKEND_URL` is set.
 
 ## Deployment
 
-Backend production deploy from the repo root:
+Backend deploys from the repository root:
 
 ```powershell
 vercel deploy --prod
 ```
 
-Frontend production deploy from `frontend/`:
+Frontend deploys from `frontend/`:
 
 ```powershell
 cd frontend
@@ -111,24 +62,30 @@ vercel deploy --prod
 
 Vercel settings:
 
-- Backend project Root Directory: repo root.
-- Frontend project Root Directory: `frontend`.
+- Backend project: `syf-finlit-agent`, root directory `.`.
+- Frontend project: `frontend`, root directory `frontend`.
 - Backend alias: `syf-finlit-agent.vercel.app`.
 - Frontend alias: `syf-finlit.vercel.app`.
 
-## Admin Access
+## Environment Variables
 
-Go to:
+Backend:
 
-```text
-https://syf-finlit.vercel.app/admin
+```env
+ANTHROPIC_API_KEY=...
+ANTHROPIC_MODEL=claude-haiku-4-5
+ADMIN_TOKEN=...
+CRON_SECRET=...
+CORS_ORIGIN=https://syf-finlit.vercel.app
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...
+SUPABASE_ACCESS_TOKEN=...
 ```
 
-Use the configured `ADMIN_TOKEN` as the admin password.
+Frontend:
 
-## Maintenance Notes
+```env
+NEXT_PUBLIC_BACKEND_URL=https://syf-finlit-agent.vercel.app
+```
 
-- To rebuild local fallback retrieval artifacts, run `python scripts/rebuild_index.py` and commit changes under `kb/processed/`.
-- Do not commit `.env`, `.venv`, `frontend/node_modules`, `frontend/.next`, local logs, or TypeScript build info.
-- The admin console caches short-lived admin GET responses in the browser. Signing out or a failed auth verification clears that cache.
-- The chat endpoint logs analytics in a background task so logging failures do not block user responses.
+More details are in `docs/`.

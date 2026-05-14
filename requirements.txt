@@ -5,7 +5,7 @@ numpy>=1.26.0
 python-dotenv>=1.0.0
 pydantic>=2.7.0
 
-# Hybrid retrieval (BM25-only on Vercel; dense disabled via VERCEL=1)
+# Retrieval support. Production RAG is Supabase-first; BM25 is local fallback.
 rank-bm25>=0.2.2
 
 # Web content extraction

@@ -7,9 +7,7 @@ __pycache__/
 # Env
 .env
 
-# Index artifacts are intentionally committed so Vercel cold-starts can load
-# them from the bundle without rebuilding. Rebuild locally with:
-#   python scripts/rebuild_index.py && git add kb/processed/
+# Local fallback index artifacts are intentionally committed.
 # Exclude only the legacy TF-IDF index artifact:
 kb/processed/index.pkl
 
