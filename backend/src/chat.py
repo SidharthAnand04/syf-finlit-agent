@@ -42,23 +42,6 @@ def _enforce_word_limit(text: str, limit: int = MAX_WORDS) -> str:
     return " ".join(words[:limit]) + "..."
 
 
-def _clean_followups(value) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    followups: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            continue
-        question = item.strip().lstrip("•-–0123456789. ").strip()
-        if question and question.endswith("?"):
-            followups.append(question)
-        elif question:
-            followups.append(f"{question}?")
-        if len(followups) == 3:
-            break
-    return followups
-
-
 _client: anthropic.Anthropic | None = None
 
 
@@ -271,8 +254,8 @@ def call_anthropic(
     session_id: str | None = None,
     markdown: bool = True,
     mode: str = "synchrony",
-) -> tuple[str, list[str]]:
-    """Send prompt to Anthropic and return the assistant text plus follow-ups."""
+) -> str:
+    """Send prompt to Anthropic and return the assistant text response."""
     client = _get_client()
     model = _get_model()
 
@@ -293,22 +276,18 @@ def call_anthropic(
             '"content": "your actual response to the user in markdown. '
             "Use **bolding** for important terms. If has_list is true, strictly use bullet point list format. "
             'You MUST use [N] inline citation markers (where N is the source id) throughout your response whenever you state a fact. '
-            'Also provide `[link label](url)` where relevant.", '
-            '"followups": ["three concise, useful follow-up questions tailored to the user question and your answer"]}. '
-            "Follow-ups must be specific, actionable, and not generic. "
+            'Also provide `[link label](url)` where relevant."}. '
             "Do not return any extra text outside the JSON object. "
             "Do not use markdown backticks around the json."
         ),
         messages=messages,
     )
     raw = message.content[0].text
-    parsed_followups: list[str] = []
 
     try:
         print(f"RAW ANTHROPIC OUTPUT:\n{raw}\n---")
         parsed = json.loads(raw)
         actual_response = parsed.get("content", raw)
-        parsed_followups = _clean_followups(parsed.get("followups"))
         msg_len = parsed.get("message_len")
         has_list = parsed.get("has_list")
         print(f"Model decided message length: {msg_len} | has_list: {has_list}")
@@ -318,7 +297,6 @@ def call_anthropic(
             try:
                 parsed = json.loads(match.group(0))
                 actual_response = parsed.get("content", raw)
-                parsed_followups = _clean_followups(parsed.get("followups"))
             except Exception:
                 actual_response = raw
         else:
@@ -339,7 +317,7 @@ def call_anthropic(
         if len(SESSION_MEMORY[session_id]) > MAX_SESSION_TURNS * 2:
             SESSION_MEMORY[session_id] = SESSION_MEMORY[session_id][-MAX_SESSION_TURNS * 2:]
 
-    return clean, parsed_followups
+    return clean
 
 
 # ──────────────────────────────────────────────

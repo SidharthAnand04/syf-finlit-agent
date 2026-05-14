@@ -267,7 +267,7 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     prompt = build_prompt(clean_message, chunks)
     try:
         print(f"[CHAT] Calling Anthropic (model={os.getenv('ANTHROPIC_MODEL', 'claude-haiku-4-5')})...")
-        answer, followups = call_anthropic(prompt, session_id=req.session_id, markdown=req.markdown, mode=mode)
+        answer = call_anthropic(prompt, session_id=req.session_id, markdown=req.markdown, mode=mode)
         print(f"[CHAT] Anthropic response received ({len(answer)} chars).")
     except EnvironmentError as e:
         print(f"[CHAT] Environment error (missing API key?): {e}")
@@ -280,13 +280,12 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     citations = [Citation(**c) for c in raw_citations]
     print(f"[CHAT] Formatted {len(citations)} citations.")
 
-    if not followups:
-        try:
-            followups = generate_followups(clean_message, answer, chunks)
-        except Exception as e:
-            print(f"[CHAT] Follow-up fallback failed: {e}")
-            followups = []
-    print(f"[CHAT] Generated {len(followups)} follow-up suggestions.")
+    try:
+        followups = generate_followups(clean_message, answer, chunks)
+        print(f"[CHAT] Generated {len(followups)} follow-up suggestions.")
+    except Exception as e:
+        print(f"[CHAT] Follow-up generation failed: {e}")
+        followups = []
 
     response_time_ms = int((time.monotonic() - t_start) * 1000)
     print(f"[CHAT] Total response time: {response_time_ms}ms")
